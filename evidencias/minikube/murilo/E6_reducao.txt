@@ -1,0 +1,50 @@
+== Av1 | Implantacao A | E6 - FIM DA CARGA: escala DESCE ==
+Pessoa: Murilo Azevedo | Data: 2026-08-20T14:56:51+00:00
+----------------------------------------------------------------
+$ kubectl delete -f k8s/04-load-generator.yaml   (encerra a carga)
+deployment.apps "load-generator" deleted from av1 namespace
+hora do fim da carga: 14:56:51
+----------------------------------------------------------------
+Linha do tempo da reducao (janela de estabilizacao de scaleDown = 300s):
+[14:56:51] HPA: web   Deployment/web   cpu: 106%/50%   1     10    10    7m36s | Pods Running(app=web): 10
+[14:57:11] HPA: web   Deployment/web   cpu: 106%/50%   1     10    10    7m56s | Pods Running(app=web): 10
+[14:57:32] HPA: web   Deployment/web   cpu: 88%/50%   1     10    10    8m16s | Pods Running(app=web): 10
+[14:57:52] HPA: web   Deployment/web   cpu: 88%/50%   1     10    10    8m37s | Pods Running(app=web): 10
+[14:58:12] HPA: web   Deployment/web   cpu: 88%/50%   1     10    10    8m57s | Pods Running(app=web): 10
+[14:58:32] HPA: web   Deployment/web   cpu: 0%/50%   1     10    10    9m17s | Pods Running(app=web): 10
+[14:58:52] HPA: web   Deployment/web   cpu: 0%/50%   1     10    10    9m37s | Pods Running(app=web): 10
+[14:59:12] HPA: web   Deployment/web   cpu: 0%/50%   1     10    10    9m57s | Pods Running(app=web): 10
+[14:59:32] HPA: web   Deployment/web   cpu: 0%/50%   1     10    10    10m | Pods Running(app=web): 10
+[14:59:53] HPA: web   Deployment/web   cpu: 0%/50%   1     10    10    10m | Pods Running(app=web): 10
+[15:00:13] HPA: web   Deployment/web   cpu: 0%/50%   1     10    10    10m | Pods Running(app=web): 10
+[15:00:33] HPA: web   Deployment/web   cpu: 0%/50%   1     10    10    11m | Pods Running(app=web): 10
+[15:00:53] HPA: web   Deployment/web   cpu: 0%/50%   1     10    10    11m | Pods Running(app=web): 10
+[15:01:13] HPA: web   Deployment/web   cpu: 0%/50%   1     10    10    11m | Pods Running(app=web): 10
+[15:01:33] HPA: web   Deployment/web   cpu: 0%/50%   1     10    10    12m | Pods Running(app=web): 10
+[15:01:53] HPA: web   Deployment/web   cpu: 0%/50%   1     10    10    12m | Pods Running(app=web): 10
+[15:02:14] HPA: web   Deployment/web   cpu: 0%/50%   1     10    10    12m | Pods Running(app=web): 10
+[15:02:34] HPA: web   Deployment/web   cpu: 0%/50%   1     10    10    13m | Pods Running(app=web): 10
+[15:02:54] HPA: web   Deployment/web   cpu: 0%/50%   1     10    10    13m | Pods Running(app=web): 10
+[15:03:14] HPA: web   Deployment/web   cpu: 0%/50%   1     10    10    13m | Pods Running(app=web): 10
+[15:03:34] HPA: web   Deployment/web   cpu: 0%/50%   1     10    1     14m | Pods Running(app=web): 1
+[15:03:54] HPA: web   Deployment/web   cpu: 0%/50%   1     10    1     14m | Pods Running(app=web): 1
+[15:04:14] HPA: web   Deployment/web   cpu: 0%/50%   1     10    1     14m | Pods Running(app=web): 1
+[15:04:35] HPA: web   Deployment/web   cpu: 0%/50%   1     10    1     15m | Pods Running(app=web): 1
+----------------------------------------------------------------
+$ kubectl get hpa,pods -n av1 -l app=web
+NAME   REFERENCE        TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+web    Deployment/web   cpu: 0%/50%   1         10        1          15m
+NAME                   READY   STATUS    RESTARTS   AGE
+web-6578978fc7-mhp2g   1/1     Running   0          11m
+$ kubectl describe hpa web -n av1 (eventos finais)
+Events:
+  Type     Reason                        Age                From                       Message
+  ----     ------                        ----               ----                       -------
+  Warning  FailedGetResourceMetric       15m                horizontal-pod-autoscaler  failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedComputeMetricsReplicas  15m                horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedGetResourceMetric       14m (x4 over 15m)  horizontal-pod-autoscaler  failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+  Warning  FailedComputeMetricsReplicas  14m (x4 over 15m)  horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+  Normal   SuccessfulRescale             13m                horizontal-pod-autoscaler  New size: 4; reason: cpu resource utilization (percentage of request) above target
+  Normal   SuccessfulRescale             11m                horizontal-pod-autoscaler  New size: 8; reason: cpu resource utilization (percentage of request) above target
+  Normal   SuccessfulRescale             10m                horizontal-pod-autoscaler  New size: 10; reason: cpu resource utilization (percentage of request) above target
+  Normal   SuccessfulRescale             99s                horizontal-pod-autoscaler  New size: 1; reason: All metrics below target

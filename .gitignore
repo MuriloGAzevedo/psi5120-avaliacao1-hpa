@@ -1,0 +1,20 @@
+# Artefatos de compilação LaTeX (mantemos o .tex e o .pdf final)
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Nunca versionar credenciais/segredos
+*.pem
+*.key
+.env
+credentials

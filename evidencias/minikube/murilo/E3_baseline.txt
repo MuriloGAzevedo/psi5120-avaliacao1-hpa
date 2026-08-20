@@ -1,0 +1,12 @@
+== Av1 | Implantacao A | E3 - BASELINE (antes do teste de estresse) ==
+Pessoa: Murilo Azevedo | Data: 2026-08-20T14:50:47+00:00 | hora=14:50:47
+----------------------------------------------------------------
+$ kubectl get hpa web -n av1
+NAME   REFERENCE        TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+web    Deployment/web   cpu: 0%/50%   1         10        1          92s
+$ kubectl get pods -n av1 -l app=web
+NAME                   READY   STATUS    RESTARTS   AGE
+web-6578978fc7-n2glk   1/1     Running   0          94s
+$ kubectl top pods -n av1 -l app=web
+NAME                   CPU(cores)   MEMORY(bytes)   
+web-6578978fc7-n2glk   1m           11Mi            

@@ -1,0 +1,20 @@
+# 02-service.yaml - PSI5120 Avaliacao Intermediaria 1
+# Service ClusterIP: ponto de acesso estavel e interno para o conjunto de Pods.
+# O gerador de carga aponta para "http://web" (nome DNS do Service), e o Service
+# distribui as requisicoes entre todas as replicas ativas do Deployment.
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: av1
+  labels:
+    app: web
+spec:
+  type: ClusterIP
+  # Seleciona os Pods do Deployment pela label app=web.
+  selector:
+    app: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80

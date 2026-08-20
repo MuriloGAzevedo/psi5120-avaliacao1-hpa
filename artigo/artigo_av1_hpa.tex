@@ -1,0 +1,482 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[brazil]{babel}
+\usepackage{cite}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{verbatim}
+
+\begin{document}
+
+\title{Autoescalamento Horizontal de Pods (HPA) em Kubernetes:\\
+um estudo comparativo entre Minikube e Amazon EKS}
+
+\author{
+\IEEEauthorblockN{Murilo Gabriel Moraes de Azevedo, Bruno Valle Martins e Pedro Remus de Ávila}
+\IEEEauthorblockA{Escola Politécnica da Universidade de São Paulo\\
+PSI5120 --- Tópicos em Computação em Nuvem (2026)\\
+N\textsuperscript{o} USP: 13782776, 13681036, 13682486}
+}
+
+\maketitle
+
+\begin{abstract}
+Este trabalho projeta, implanta e testa um servidor web em Kubernetes configurado com
+\textit{Horizontal Pod Autoscaler} (HPA), comparando duas plataformas: um cluster local com
+Minikube e um cluster gerenciado na nuvem com Amazon EKS. A mesma aplicação, os mesmos
+manifestos e o mesmo protocolo de teste de estresse são aplicados às duas implantações. Na
+implantação local, o HPA reagiu a uma carga sintética de CPU escalando o número de réplicas de
+1 para o teto de 10 em cerca de três minutos (transições 1$\to$4$\to$8$\to$10) e, após o
+término da carga, reduziu de volta a uma réplica respeitando a janela de estabilização de
+300\,s. Discutem-se tempo de reação, consumo de recursos, custos e facilidade de gerenciamento,
+destacando as diferenças arquiteturais entre executar o autoescalamento em um nó único local e
+em um cluster multi-nó gerenciado. Conclui-se que o mecanismo de HPA é portátil entre as
+plataformas, mas o contexto operacional --- provedor de métricas, origem da imagem, distribuição
+entre nós, custo e a necessidade de escalar também a capacidade de nós --- é o que distingue um
+laboratório local de uma operação elástica em nuvem.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Kubernetes, autoescalamento, HPA, Minikube, Amazon EKS, computação em nuvem, elasticidade,
+teste de estresse, contêineres.
+\end{IEEEkeywords}
+
+\section{Introdução}
+A elasticidade --- a capacidade de ajustar recursos computacionais à demanda de forma automática
+--- é um dos princípios definidores da computação em nuvem. Sistemas subprovisionados degradam
+sob picos de carga, violando acordos de nível de serviço; sistemas superprovisionados
+desperdiçam recurso e dinheiro durante os vales de utilização. O equilíbrio dinâmico entre esses
+extremos é precisamente o que os mecanismos de autoescalamento buscam oferecer, substituindo o
+dimensionamento estático e manual por um controle contínuo guiado por métricas.
+
+Em plataformas de orquestração de contêineres como o Kubernetes, a elasticidade se manifesta em
+diferentes níveis. No nível da aplicação, o \textit{Horizontal Pod Autoscaler}
+(HPA)~\cite{k8shpa} ajusta o número de réplicas (\textit{Pods}) de uma carga de trabalho com base
+em métricas observadas, como a utilização de CPU. No nível do \textit{Pod}, o \textit{Vertical
+Pod Autoscaler} ajusta os recursos solicitados por contêiner. No nível da infraestrutura, o
+\textit{Cluster Autoscaler} e o Karpenter ajustam o número de nós. Este trabalho concentra-se no
+primeiro nível, o mais diretamente ligado à noção de escalar horizontalmente uma aplicação web.
+
+O objetivo é \textbf{projetar, implantar e testar} um servidor web sob HPA em duas plataformas
+distintas e obrigatórias: (i) um cluster \textbf{local} com Minikube e (ii) um cluster
+\textbf{gerenciado na nuvem} com Amazon EKS~\cite{ekshpa}. A hipótese de trabalho é que o
+\emph{mecanismo} de autoescalamento é idêntico nas duas plataformas --- pois o HPA é um recurso
+nativo do Kubernetes ---, mas o \emph{contexto operacional} (instalação do provedor de métricas,
+origem da imagem, distribuição entre nós, custo e esforço de gerenciamento) difere de forma
+relevante e determina a aplicabilidade de cada ambiente.
+
+As contribuições deste artigo são: (a) uma implementação \textbf{reprodutível} de um servidor web
+sob HPA, com manifestos comentados, imagem própria e \textit{scripts} de automação versionados em
+repositório público; (b) a \textbf{caracterização empírica} da dinâmica do HPA sob teste de
+estresse na implantação local, incluindo os tempos de reação de subida e descida e o consumo por
+réplica; e (c) uma \textbf{análise comparativa} entre a execução local e a gerenciada na nuvem
+quanto a tempo de reação, consumo, custo e gerenciamento. O restante do artigo detalha os
+trabalhos relacionados (Seção~\ref{sec:rel}), a fundamentação (Seção~\ref{sec:fund}), a
+arquitetura (Seção~\ref{sec:arq}), a metodologia (Seção~\ref{sec:met}), os resultados
+(Seção~\ref{sec:res}), a análise comparativa (Seção~\ref{sec:comp}), a discussão
+(Seção~\ref{sec:disc}), as ameaças à validade (Seção~\ref{sec:ameacas}) e as conclusões
+(Seção~\ref{sec:conc}).
+
+\section{Trabalhos relacionados}\label{sec:rel}
+O autoescalamento em nuvem é tema consolidado. A documentação oficial do Kubernetes~\cite{k8shpa}
+apresenta o \textit{walkthrough} canônico do HPA, no qual uma aplicação PHP-Apache limitada por
+CPU é escalada sob carga; este trabalho adota a mesma classe de aplicação, mas em um estudo
+\emph{comparativo} entre plataformas local e gerenciada. A documentação da AWS~\cite{ekshpa}
+descreve o HPA no contexto do EKS, ressaltando a necessidade de instalar o \textit{Metrics Server}
+e a interação com a capacidade de nós. A literatura de sistemas distingue o autoescalamento
+\emph{reativo} (baseado em limiares sobre métricas correntes, como o HPA por CPU) do
+\emph{preditivo} (baseado em previsão de demanda); o presente estudo situa-se no primeiro grupo.
+Em relação a esses materiais, a contribuição aqui é metodológica e empírica: aplicar um protocolo
+idêntico de estresse a duas plataformas e caracterizar quantitativamente a resposta observada,
+tornando explícitas as diferenças de \emph{contexto} que não aparecem quando se estuda uma única
+plataforma.
+
+\section{Fundamentação}\label{sec:fund}
+\subsection{Kubernetes: objetos relevantes}
+O Kubernetes organiza aplicações em objetos declarativos. Um \texttt{Pod} é a menor unidade
+implantável; um \texttt{Deployment} declara o estado desejado de uma carga (imagem, réplicas,
+recursos) e o mantém por meio de um \texttt{ReplicaSet}; um \texttt{Service} fornece um ponto de
+acesso estável a um conjunto de \texttt{Pods}. O \texttt{HorizontalPodAutoscaler} atua sobre o
+\texttt{Deployment}, alterando seu número de réplicas. O plano de controle (servidor de API,
+\textit{scheduler}, controladores e \textit{etcd}) reconcilia continuamente o estado observado
+com o desejado; em cada nó, o \textit{kubelet} materializa os \texttt{Pods} atribuídos.
+
+\subsection{Horizontal Pod Autoscaler}
+O HPA é um controlador que executa em laço fechado. Periodicamente (por padrão, a cada 15\,s),
+consulta a métrica-alvo de todos os \texttt{Pods} da carga, calcula a utilização média e
+determina o número desejado de réplicas pela relação
+\begin{equation}\label{eq:hpa}
+R_{des} = \left\lceil R_{atual} \times \frac{M_{atual}}{M_{alvo}} \right\rceil,
+\end{equation}
+onde $R$ é o número de réplicas e $M$ a métrica --- neste trabalho, a utilização média de CPU
+como percentual do \texttt{requests.cpu} declarado no contêiner. O resultado é limitado por
+\texttt{minReplicas} e \texttt{maxReplicas}. Uma banda de tolerância (por padrão, 10\,\%) evita
+reações a flutuações pequenas em torno do alvo.
+
+Para evitar oscilação (\textit{flapping}), o HPA aplica \textbf{janelas de estabilização}
+distintas para subida e descida. A subida costuma ser imediata; a descida, por padrão, observa
+uma janela de 300\,s, durante a qual o controlador não reduz abaixo do maior número de réplicas
+recomendado no período. Há ainda \textit{políticas de escala} que limitam a taxa de variação por
+intervalo (por exemplo, no máximo dobrar as réplicas ou adicionar quatro \texttt{Pods}). Esses
+parâmetros explicam por que a resposta observada avança em passos e não em um único salto.
+
+\subsection{Taxonomia do autoescalamento}
+Convém distinguir três mecanismos complementares. O \textbf{HPA} escala o número de réplicas
+(horizontal, no nível da aplicação). O \textbf{VPA} (\textit{Vertical Pod Autoscaler}) ajusta os
+recursos solicitados por contêiner (vertical). O \textbf{Cluster Autoscaler}/Karpenter ajusta o
+número de \emph{nós}. Um ponto central deste trabalho é que o HPA, isoladamente, escala
+\emph{Pods}, não nós: se o teto de réplicas exigir mais capacidade do que o cluster possui, os
+\texttt{Pods} excedentes permanecem \texttt{Pending} até que a capacidade de nós aumente --- o que
+o HPA não faz por si só.
+
+\subsection{Provedor de métricas: Metrics Server}
+O HPA por CPU depende de um provedor de métricas. O \textit{Metrics Server} coleta o uso de CPU e
+memória de cada \texttt{Pod} a partir dos \textit{kubelets} e o expõe pela \textit{Metrics API}.
+É condição necessária: sem ele, o HPA reporta a métrica como \texttt{<unknown>} e não escala. Há
+uma latência inicial até o \textit{Metrics Server} publicar as primeiras amostras após a criação
+dos \texttt{Pods}.
+
+\subsection{Minikube e Amazon EKS}
+O \textbf{Minikube} cria um cluster Kubernetes \textbf{local de nó único}, adequado a estudo e
+desenvolvimento; o \textit{Metrics Server} é habilitado por um \textit{addon} de um comando, e
+imagens locais podem ser injetadas com \texttt{minikube image load}. O \textbf{Amazon EKS} é um
+serviço \textbf{gerenciado} em que a AWS opera o plano de controle e o usuário provê capacidade
+por meio de um \textit{managed node group} de instâncias EC2. No EKS, o \textit{Metrics Server}
+é instalado manualmente por manifesto e as imagens vêm de um \textit{registry} (Amazon ECR ou
+Docker Hub). Essas diferenças não alteram o \emph{mecanismo} do HPA, mas mudam o \emph{contexto}
+de operação.
+
+\section{Arquitetura e topologia}\label{sec:arq}
+A aplicação é um servidor web (\texttt{php:8.2-apache}) cujo \texttt{index.php} executa, a cada
+requisição, um laço de cálculo de raiz quadrada que consome CPU de forma mensurável --- a mesma
+classe de aplicação do \textit{walkthrough} do HPA~\cite{k8shpa}. Escolheu-se uma carga
+\textbf{limitada por CPU} justamente porque a métrica de autoescalamento é a utilização de CPU. A
+imagem é construída a partir de um \texttt{Dockerfile} próprio (Figura~\ref{fig:dockerfile}) e
+versionada no repositório.
+
+\begin{figure}[!t]
+\footnotesize
+\begin{verbatim}
+FROM php:8.2-apache
+COPY index.php /var/www/html/index.php
+EXPOSE 80
+# a imagem base ja inicia o Apache em foreground
+\end{verbatim}
+\caption{\texttt{Dockerfile} do servidor web (comentado no repositório).}
+\label{fig:dockerfile}
+\end{figure}
+
+A Tabela~\ref{tab:comp-obj} lista os objetos Kubernetes da solução e seu papel. A carga é
+declarada por um \texttt{Deployment} com \texttt{requests.cpu = 200m} e \texttt{limits.cpu =
+500m} (Figura~\ref{fig:deploy}); definir \texttt{requests} é \textbf{obrigatório}, pois o alvo de
+utilização do HPA é medido como percentual desse valor. Um \texttt{Service} \texttt{ClusterIP} dá
+acesso estável ao conjunto de réplicas, e o \texttt{HPA} (Figura~\ref{fig:hpa}) mantém a
+utilização média de CPU em 50\,\% do \texttt{requests}, entre 1 e 10 réplicas.
+A Figura~\ref{fig:arq} resume a topologia comum às duas implantações.
+
+\begin{table}[!t]
+\caption{Objetos Kubernetes da solução}
+\label{tab:comp-obj}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{1.6cm}p{5.6cm}@{}}
+\toprule
+\textbf{Objeto} & \textbf{Papel} \\
+\midrule
+Namespace \texttt{av1} & escopo lógico e limpeza \\
+Deployment \texttt{web} & servidor web; alvo do HPA; declara requests/limits de CPU \\
+Service \texttt{web} & acesso interno estável (ClusterIP) ao conjunto de Pods \\
+HPA \texttt{web} & mantém CPU média em 50\%; 1 a 10 réplicas \\
+Deployment \texttt{load-generator} & teste de estresse (requisições HTTP em laço) \\
+Metrics Server & fornece a métrica de CPU ao HPA \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[!t]
+\footnotesize
+\begin{verbatim}
+spec:
+  replicas: 1        # o HPA passa a controlar
+  template:
+    spec:
+      containers:
+      - name: web
+        image: av1-webcpu:v1
+        resources:
+          requests: { cpu: 200m, memory: 64Mi }
+          limits:   { cpu: 500m, memory: 128Mi }
+\end{verbatim}
+\caption{Trecho do \texttt{Deployment} (requests/limits de CPU).}
+\label{fig:deploy}
+\end{figure}
+
+\begin{figure}[!t]
+\footnotesize
+\begin{verbatim}
+kind: HorizontalPodAutoscaler   # autoscaling/v2
+spec:
+  scaleTargetRef: { kind: Deployment, name: web }
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target: { type: Utilization,
+                averageUtilization: 50 }
+\end{verbatim}
+\caption{Manifesto do HPA usado nas duas implantações.}
+\label{fig:hpa}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+\footnotesize
+\begin{verbatim}
+[ Gerador de carga ] --HTTP--> [ Service web ]
+                                     |
+                                     v
+              [ Deployment web ]  (1..10 Pods)
+                     ^  ajusta replicas
+                     |
+      [ HPA: CPU media 50% ] <-- [ Metrics Server ]
+\end{verbatim}
+\caption{Topologia comum. O HPA lê a CPU dos Pods pelo Metrics Server e ajusta as réplicas do
+Deployment; o gerador de carga eleva a CPU e dispara o escalamento.}
+\label{fig:arq}
+\end{figure}
+
+A diferença de topologia está no substrato. No \textbf{Minikube} há um \textbf{único nó} --- todas
+as réplicas residem nele --- e a imagem é injetada com \texttt{minikube image load}. No
+\textbf{EKS} há um \textit{managed node group} com \textbf{múltiplos nós EC2} sobre os quais os
+\texttt{Pods} podem se distribuir, e a imagem vem de um \textit{registry}.
+
+\section{Metodologia}\label{sec:met}
+O mesmo protocolo foi definido para as duas plataformas, garantindo comparabilidade:
+\begin{enumerate}
+\item provisionar o cluster e \textbf{garantir o Metrics Server ativo};
+\item disponibilizar a imagem do servidor web (carga local na plataforma local; \textit{registry}
+na nuvem);
+\item aplicar \texttt{Deployment}, \texttt{Service} e \texttt{HPA};
+\item registrar o \textbf{baseline} (1 réplica, CPU ociosa);
+\item iniciar o \textbf{teste de estresse}, aplicando um \texttt{Deployment} gerador de carga com
+cinco réplicas de um cliente que envia requisições HTTP em laço ao \texttt{Service};
+\item observar o \textit{scale up} (utilização de CPU e número de réplicas ao longo do tempo);
+\item encerrar a carga e observar o \textit{scale down} até o retorno ao estado inicial.
+\end{enumerate}
+
+O gerador de carga (Figura~\ref{fig:load}) foi dimensionado para saturar o alvo de 50\,\% de CPU:
+cinco clientes concorrentes mantêm requisições contínuas, cada uma disparando o laço de CPU do
+servidor. As evidências --- estado antes, durante e após a carga; métricas; e eventos do
+controlador --- foram coletadas com \texttt{kubectl get hpa}, \texttt{kubectl get pods},
+\texttt{kubectl top pods} e \texttt{kubectl describe hpa}, com carimbos de tempo a cada 20\,s para
+reconstruir a linha do tempo. Todo o material (manifestos, \textit{scripts} e saídas) está
+versionado em repositório público, permitindo reprodução por qualquer integrante do grupo.
+
+\begin{figure}[!t]
+\footnotesize
+\begin{verbatim}
+# gerador de carga (Deployment, 5 replicas):
+while true; do
+  wget -q -O- http://web > /dev/null
+done
+\end{verbatim}
+\caption{Laço do gerador de carga (teste de estresse).}
+\label{fig:load}
+\end{figure}
+
+\section{Resultados}\label{sec:res}
+\subsection{Implantação A --- Minikube (local)}
+O cluster local (Minikube v1.38, Kubernetes v1.35, \textit{driver} Docker, nó único, quatro vCPUs
+disponíveis) foi provisionado e o \textit{Metrics Server} habilitado por \textit{addon}. No
+\textbf{baseline}, o HPA reportou \texttt{cpu: 0\%/50\%} com \textbf{1 réplica} consumindo cerca
+de 1\,m de CPU --- estado ocioso.
+
+Ao iniciar o teste de estresse, a utilização de CPU subiu rapidamente e o HPA executou uma
+sequência de reescalonamentos. A Tabela~\ref{tab:minikube} resume a linha do tempo observada.
+
+\begin{table}[!t]
+\caption{Linha do tempo do HPA na implantação Minikube}
+\label{tab:minikube}
+\centering
+\footnotesize
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Momento} & \textbf{CPU (atual/alvo)} & \textbf{Réplicas} \\
+\midrule
+Baseline & 0\,\% / 50\,\% & 1 \\
+Início da carga (+0\,s) & 0\,\% / 50\,\% & 1 \\
++60\,s & 161\,\% / 50\,\% & 1 $\to$ 4 \\
++2\,min & 183\,\% / 50\,\% & 8 \\
++3\,min & 106\,\% / 50\,\% & \textbf{10} (máx.) \\
+Fim da carga (+0\,s) & 106\,\% / 50\,\% & 10 \\
++90\,s & 0\,\% / 50\,\% & 10 \\
++5\,min (janela) & 0\,\% / 50\,\% & \textbf{10 $\to$ 1} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Os eventos do controlador (\texttt{kubectl describe hpa}) confirmam a progressão:
+\texttt{SuccessfulRescale} para \textbf{4}, \textbf{8} e \textbf{10} réplicas (``\textit{cpu
+resource utilization above target}'') e, após o fim da carga, \texttt{SuccessfulRescale} para
+\textbf{1} (``\textit{All metrics below target}''). A sequência 1$\to$4$\to$8$\to$10 é coerente
+com a Equação~\ref{eq:hpa} combinada às políticas de taxa de escala: a partir de uma réplica a
+161\,\%, o número desejado calculado é alto, mas o controlador avança em passos limitados por
+intervalo até atingir o teto de 10.
+
+No pico, as dez réplicas apresentaram consumo \textbf{homogêneo} --- aproximadamente 198 a 229\,m
+de CPU cada (Tabela~\ref{tab:top}), próximo do \texttt{requests} de 200\,m ---, todas agendadas no
+\textbf{mesmo nó}, característica do Minikube de nó único. A utilização média reportada no pico
+(106\,\%) ainda acima do alvo indica que, se houvesse teto maior, o HPA teria continuado a
+escalar; o valor foi contido pelo \texttt{maxReplicas = 10}.
+
+\begin{table}[!t]
+\caption{Consumo por réplica no pico (amostra)}
+\label{tab:top}
+\centering
+\footnotesize
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Pod} & \textbf{CPU (milicores)} \\
+\midrule
+web-\ldots-n2glk & 198\,m \\
+web-\ldots-mhp2g & 206\,m \\
+web-\ldots-2mcnq & 213\,m \\
+web-\ldots-6v458 & 222\,m \\
+web-\ldots-mmsg9 & 229\,m \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Dinâmica temporal}
+A dinâmica observada é \textbf{assimétrica}. O \textit{scale up} foi \textbf{agressivo}: a
+primeira reação ocorreu em cerca de 60\,s após o início da carga (limitada, no primeiro minuto,
+pela latência inicial do \textit{Metrics Server}, que emitiu avisos \texttt{FailedGetResourceMetric}
+até publicar as primeiras amostras) e o teto de 10 réplicas foi atingido em cerca de 3\,min. O
+\textit{scale down} foi \textbf{conservador}: encerrada a carga, a CPU caiu a 0\,\% em cerca de
+90\,s, mas as réplicas \textbf{permaneceram em 10 durante a janela de estabilização de 300\,s},
+reduzindo a 1 apenas após esse período. Esse comportamento é intencional --- prioriza
+disponibilidade na subida e evita oscilação na descida --- e foi reproduzido fielmente pela
+configuração padrão do controlador.
+
+\subsection{Implantação B --- Amazon EKS (nuvem)}
+\textit{[Execução em andamento.]} A implantação em EKS segue o mesmo protocolo e os mesmos
+manifestos (Figuras~\ref{fig:deploy}--\ref{fig:arq}), com três diferenças operacionais: o
+\textit{Metrics Server} é instalado por manifesto oficial; a imagem é publicada em um
+\textit{registry} (Amazon ECR); e o \textit{managed node group} possui \textbf{mais de um nó},
+permitindo observar a \textbf{distribuição das réplicas entre nós}. Os resultados quantitativos
+(linha do tempo análoga à Tabela~\ref{tab:minikube}, tempo de reação e número de \texttt{Pods}
+por nó) serão coletados no Console e no CloudShell e inseridos nesta seção.
+\_[preencher com os dados da execução em EKS]\_.
+
+\section{Análise comparativa}\label{sec:comp}
+A Tabela~\ref{tab:comp} sintetiza a comparação segundo os critérios solicitados. Em seguida,
+discutem-se os pontos de maior impacto.
+
+\begin{table}[!t]
+\caption{Comparação qualitativa Minikube vs.\ Amazon EKS}
+\label{tab:comp}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{2.0cm}p{2.6cm}p{2.6cm}@{}}
+\toprule
+\textbf{Critério} & \textbf{Minikube (local)} & \textbf{Amazon EKS (nuvem)} \\
+\midrule
+Mecanismo de HPA & idêntico (nativo do Kubernetes) & idêntico \\
+Metrics Server & \textit{addon} (um comando) & manifesto manual \\
+Origem da imagem & \texttt{minikube image load} & \textit{registry} (ECR/Docker Hub) \\
+Topologia & nó único; réplicas no mesmo nó & multi-nó; réplicas distribuídas \\
+Escala de nós & não aplicável & requer Cluster Autoscaler/Karpenter \\
+Custo & $\approx$ zero (recursos locais) & control plane + EC2 + EBS (por hora) \\
+Gerenciamento & simples; efêmero & plano de controle gerenciado; mais configuração \\
+Uso indicado & estudo, desenvolvimento & produção, elasticidade real \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Tempo de reação.} O mecanismo do HPA é o mesmo; espera-se tempo de reação comparável nas
+duas plataformas, pois depende do período de sincronização do controlador (15\,s) e da latência
+do \textit{Metrics Server}, não do provedor. Diferenças podem surgir do intervalo de coleta e da
+escala do cluster.
+
+\textbf{Consumo de recursos.} No Minikube, as dez réplicas competem pela CPU de um único nó; se o
+nó saturar, os \texttt{Pods} sofrem \textit{throttling} e a utilização observada deixa de crescer.
+No EKS multi-nó, as réplicas se distribuem, reduzindo a contenção por nó e aproximando a
+utilização medida da demanda real.
+
+\textbf{Custo.} O Minikube é essencialmente \textbf{gratuito} (recursos locais), ideal para
+validar o mecanismo. O EKS incorre em custo por hora do plano de controle e das instâncias EC2
+(mais volumes EBS), justificável quando se requer elasticidade real e disponibilidade.
+
+\textbf{Facilidade de gerenciamento.} O Minikube é simples e efêmero (criar/destruir em minutos),
+mas não representa produção. O EKS transfere à AWS a operação do plano de controle, ao custo de
+mais configuração inicial (rede/VPC, IAM, provedor de métricas, \textit{registry}).
+
+\section{Discussão}\label{sec:disc}
+Dois pontos merecem destaque. Primeiro, o \textbf{HPA escala Pods, não nós}: no Minikube de nó
+único, as dez réplicas couberam no mesmo nó porque havia CPU disponível (quatro vCPUs para um teto
+que exige, no máximo, dez vezes 100\,m de CPU-alvo); em produção, atingir o teto de réplicas com
+alvos maiores pode exigir \textbf{mais nós}, o que o HPA \emph{não} provê. Caberia ao
+\textit{Cluster Autoscaler} ou ao Karpenter no EKS criar nós adicionais; sem eles, os
+\texttt{Pods} excedentes ficariam \texttt{Pending}. A combinação HPA + autoescalador de nós é,
+portanto, o que aproxima o comportamento de uma elasticidade fim a fim.
+
+Segundo, o \textbf{custo} inverte a avaliação conforme o uso. Para validar o mecanismo, estudar e
+desenvolver, o Minikube é imbatível: gratuito, rápido de criar e destruir. Para operar uma
+aplicação real com elasticidade e disponibilidade, o Minikube não serve --- não há múltiplos nós,
+zonas ou balanceador gerenciado ---, e o EKS passa a compensar seu custo por hora. A escolha entre
+as plataformas não é, portanto, de ``melhor'' ou ``pior'', mas de \emph{propósito}: laboratório
+versus produção.
+
+Por fim, a \textbf{assimetria temporal} observada (subida rápida, descida lenta) é uma decisão de
+projeto do controlador que reflete uma preferência por disponibilidade sobre economia imediata: é
+preferível manter réplicas ociosas por alguns minutos a arriscar remover capacidade prematuramente
+diante de uma carga intermitente. Aplicações com padrões de carga muito irregulares podem ajustar
+as janelas de estabilização para equilibrar custo e disponibilidade.
+
+\section{Ameaças à validade}\label{sec:ameacas}
+A carga é \textbf{sintética} e limitada por CPU; aplicações reais podem ser limitadas por memória,
+E/S ou latência de dependências, casos em que a métrica de CPU não capturaria a demanda (exigindo
+métricas customizadas). O experimento local usa \textbf{um único nó} com quatro vCPUs, o que limita
+a CPU total disponível e pode induzir \textit{throttling} no pico, afetando a utilização medida. Os
+tempos derivam de amostragem a cada 20\,s, com granularidade correspondente. Por fim, a comparação
+de custo é \textbf{qualitativa}; valores exatos dependem de região, tipo de instância e tempo de
+execução, a serem confirmados na calculadora de preços da AWS.
+
+\section{Conclusão}\label{sec:conc}
+Demonstrou-se, de ponta a ponta, o autoescalamento horizontal de um servidor web em Kubernetes. Na
+implantação local com Minikube, o HPA reagiu a uma carga sintética escalando de 1 para 10 réplicas
+em cerca de três minutos (1$\to$4$\to$8$\to$10) e retornando a uma réplica após a janela de
+estabilização de 300\,s, comprovando empiricamente o mecanismo e sua dinâmica assimétrica (subida
+agressiva, descida conservadora). A implantação em Amazon EKS reutiliza exatamente os mesmos
+manifestos e protocolo, diferindo no substrato operacional (métricas, imagem, multi-nó e custo).
+Conclui-se que o \textbf{mecanismo} de autoescalamento é portátil entre as plataformas, mas o
+\textbf{contexto} --- custo, distribuição entre nós e a necessidade de escalar também a capacidade
+de nós --- é o que efetivamente distingue um laboratório local de uma operação elástica em nuvem.
+Como trabalho futuro, propõe-se combinar o HPA com o \textit{Cluster Autoscaler}/Karpenter no EKS,
+avaliar o autoescalamento sob métricas customizadas além da CPU e comparar o autoescalamento
+reativo com abordagens preditivas.
+
+\begin{thebibliography}{1}
+\bibitem{k8shpa}
+Kubernetes Documentation, ``Horizontal Pod Autoscaler Walkthrough''.
+\url{https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale-walkthrough/}.
+\bibitem{ekshpa}
+AWS EKS Documentation, ``Scale pod deployments with Horizontal Pod Autoscaler''.
+\url{https://docs.aws.amazon.com/eks/latest/userguide/horizontal-pod-autoscaler.html}.
+\bibitem{k8sdocs}
+The Kubernetes Authors, ``Kubernetes Documentation: Concepts''.
+\url{https://kubernetes.io/docs/concepts/}.
+\bibitem{metricsserver}
+Kubernetes SIGs, ``Kubernetes Metrics Server''.
+\url{https://github.com/kubernetes-sigs/metrics-server}.
+\end{thebibliography}
+
+\end{document}

@@ -1,0 +1,41 @@
+# 01-deployment.yaml - PSI5120 Avaliacao Intermediaria 1
+# Deployment do servidor web. O HPA atuara sobre este Deployment,
+# ajustando o numero de replicas (Pods) conforme a utilizacao de CPU.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: av1
+  labels:
+    app: web
+spec:
+  # Comeca com 1 replica; o HPA e quem passa a controlar esse numero depois.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          # Imagem propria construida a partir do Dockerfile em app/.
+          # No Minikube a imagem e carregada no cluster com "minikube image load".
+          # imagePullPolicy IfNotPresent evita tentar baixar de um registry remoto.
+          image: av1-webcpu:v1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          resources:
+            # requests.cpu e a base de calculo do HPA: a utilizacao alvo (50%)
+            # e medida como percentual de "200m". Definir requests e OBRIGATORIO
+            # para o HPA por CPU funcionar.
+            requests:
+              cpu: 200m
+              memory: 64Mi
+            # limits impede que um Pod consuma CPU/memoria sem teto.
+            limits:
+              cpu: 500m
+              memory: 128Mi

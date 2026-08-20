@@ -1,0 +1,10 @@
+# 00-namespace.yaml - PSI5120 Avaliacao Intermediaria 1
+# Cria um escopo logico dedicado para os objetos do experimento de HPA.
+# Facilita a organizacao e a limpeza (basta remover o namespace ao final).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: av1
+  labels:
+    disciplina: psi5120
+    trabalho: avaliacao-1

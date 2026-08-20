@@ -1,0 +1,36 @@
+# 03-hpa.yaml - PSI5120 Avaliacao Intermediaria 1
+# Horizontal Pod Autoscaler (HPA): objeto central do trabalho.
+# Observa a utilizacao media de CPU dos Pods do Deployment "web" e ajusta
+# automaticamente o numero de replicas entre minReplicas e maxReplicas para
+# manter a utilizacao proxima do alvo (averageUtilization: 50%).
+# Requer o Metrics Server ativo no cluster para fornecer as metricas de CPU.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web
+  namespace: av1
+spec:
+  # Alvo do autoescalamento: o Deployment "web".
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          # Escala para manter a media de uso de CPU em ~50% do requests.cpu (200m),
+          # ou seja, ~100m por Pod. Acima disso, o HPA adiciona replicas.
+          type: Utilization
+          averageUtilization: 50
+  # (Opcional) Comportamento de escala. Deixamos os padroes explicitos para o relatorio:
+  # - scaleUp reage rapido; scaleDown tem janela de estabilizacao de 300s (5 min)
+  #   para evitar oscilacao (flapping) apos o fim da carga.
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+    scaleDown:
+      stabilizationWindowSeconds: 300
