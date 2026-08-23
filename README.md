@@ -9,7 +9,12 @@ em duas plataformas:
 O objetivo é observar o HPA **escalar automaticamente** o número de réplicas do servidor web sob **teste de
 carga (estresse de CPU)** e **reduzir** as réplicas quando a carga cessa, comparando as duas plataformas.
 
-**Autores (grupo):** Murilo Azevedo, Bruno Valle, Pedro _[sobrenome — preencher]_ · PSI5120 — 2026.
+**Autores (grupo):** Murilo Gabriel Moraes de Azevedo (13782776), Bruno Valle Martins (13681036),
+Pedro Remus de Ávila (13682486) · PSI5120 — 2026.
+
+> ⭐ **Execução de referência:** as evidências em `evidencias/` (Minikube + EKS) são da execução realizada por
+> **Murilo** e servem de referência do grupo. Cada integrante deve reproduzir as duas implantações seguindo o
+> **[GUIA_EXECUCAO_PARA_O_GRUPO.md](GUIA_EXECUCAO_PARA_O_GRUPO.md)** e guardar suas próprias evidências.
 
 ## Estrutura do repositório
 
