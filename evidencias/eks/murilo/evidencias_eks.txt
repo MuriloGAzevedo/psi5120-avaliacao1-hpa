@@ -1,0 +1,63 @@
+====================================================================
+PSI5120 - Avaliacao Intermediaria 1 - Implantacao B (Amazon EKS)
+Evidencias de execucao - Murilo Gabriel Moraes de Azevedo
+Regiao: us-east-1 | Cluster: av1-eks (Kubernetes 1.36) | Node group: av1-ng (2x t3.medium)
+====================================================================
+
+--- E1) Identidade AWS (nao-root) ---
+$ aws sts get-caller-identity
+  Arn: arn:aws:iam::****:user/murilo-admin   (Account mascarado)
+
+--- E2) VPC via CloudFormation (av1-vpc: CREATE_COMPLETE) ---
+  VpcId:          vpc-0ed3dbdfa3949a929
+  SubnetIds:      subnet-004d940ad50bf8209, subnet-0dfec3cad2b21ad5f, subnet-0d471d2baa3466cb0
+  SecurityGroups: sg-0738a0be2dca88c35
+
+--- E3) Cluster e node group ativos ---
+$ aws eks describe-cluster ... -> Name=av1-eks Status=ACTIVE Version=1.36 (Auto Mode OFF: computeConfig=null)
+  node group av1-ng: Active, 2x t3.medium, AL2023, subnets nas 3 AZs
+
+--- E4) Nos Ready + Metrics Server ---
+$ kubectl get nodes -o wide
+ip-192-168-185-242.ec2.internal   Ready   v1.36.2-eks-b3f9404   192.168.185.242   Amazon Linux 2023
+ip-192-168-76-209.ec2.internal    Ready   v1.36.2-eks-b3f9404   192.168.76.209    Amazon Linux 2023
+$ kubectl top nodes
+ip-192-168-185-242   32m  1%   408Mi 12%
+ip-192-168-76-209    37m  1%   393Mi 11%
+
+--- E5) Baseline (antes da carga) ---
+$ kubectl get deployment,hpa,pods -n av1 -o wide
+deployment.apps/web   1/1   registry.k8s.io/hpa-example
+hpa web   cpu: 0%/50%   MIN 1  MAX 10  REPLICAS 1
+pod/web-5f457558bb-bdgpz   Running   NODE ip-192-168-76-209
+
+--- E6) Teste de estresse: escala SOBE (linha do tempo) ---
+[+0s ]  cpu 0%/50%     REPLICAS 1
+[+20s]  cpu 113%/50%   REPLICAS 1->3
+[+40s]  cpu 139%/50%   REPLICAS 5
+[+60s]  cpu 122%/50%   REPLICAS 9
+[+90s]  cpu 98%/50%    REPLICAS 10 (max)
+Eventos: SuccessfulRescale New size: 3 / 5 / 9 / 10 ("cpu utilization above target")
+
+--- E7) Pico: 10 replicas DISTRIBUIDAS 5/5 entre os 2 nos ---
+$ kubectl get pods -n av1 -l app=web -o wide  (resumo por no)
+  ip-192-168-76-209  : bdgpz, cxfx7, dsg57, n45zr, xggpt   (5 pods)
+  ip-192-168-185-242 : jqgws, lnjh9, qvsdc, s6plx, v8pbf   (5 pods)
+$ kubectl top pods -n av1 -l app=web  -> 116m a 234m de CPU por replica
+
+--- E8) Fim da carga: escala DESCE ---
+carga removida -> cpu cai a 0% em ~1,5 min
+replicas mantidas em 10 durante a janela de estabilizacao (300s)
+Eventos: SuccessfulRescale New size: 2 / 1 ("All metrics below target")
+Estado final: hpa cpu 0%/50% REPLICAS 1 ; 1 pod Running
+
+--- E9) LIMPEZA (verificacao final) ---
+== clusters ==        (vazio)
+== instancias ==      terminated  terminated
+== stacks av1 ==      (vazio)
+== roles av1 ==       (vazio)
+Custo do experimento (Billing month-to-date): US$ 0,19
+
+====================================================================
+Screenshots (evidencia fotografica) correspondentes: ver arquivos PNG nesta pasta.
+====================================================================

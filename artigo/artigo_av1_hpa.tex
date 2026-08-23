@@ -34,7 +34,10 @@ manifestos e o mesmo protocolo de teste de estresse são aplicados às duas impl
 implantação local, o HPA reagiu a uma carga sintética de CPU escalando o número de réplicas de
 1 para o teto de 10 em cerca de três minutos (transições 1$\to$4$\to$8$\to$10) e, após o
 término da carga, reduziu de volta a uma réplica respeitando a janela de estabilização de
-300\,s. Discutem-se tempo de reação, consumo de recursos, custos e facilidade de gerenciamento,
+300\,s. Na nuvem, o mesmo protocolo em Amazon EKS com dois nós reproduziu a escala (1 a 10) de
+forma ainda mais rápida (cerca de 1,5\,min) e distribuiu as réplicas igualmente entre os nós
+(5/5), diferença ausente no nó único local. Discutem-se tempo de reação, consumo de recursos,
+custos e facilidade de gerenciamento,
 destacando as diferenças arquiteturais entre executar o autoescalamento em um nó único local e
 em um cluster multi-nó gerenciado. Conclui-se que o mecanismo de HPA é portátil entre as
 plataformas, mas o contexto operacional --- provedor de métricas, origem da imagem, distribuição
@@ -367,14 +370,62 @@ disponibilidade na subida e evita oscilação na descida --- e foi reproduzido f
 configuração padrão do controlador.
 
 \subsection{Implantação B --- Amazon EKS (nuvem)}
-\textit{[Execução em andamento.]} A implantação em EKS segue o mesmo protocolo e os mesmos
-manifestos (Figuras~\ref{fig:deploy}--\ref{fig:arq}), com três diferenças operacionais: o
-\textit{Metrics Server} é instalado por manifesto oficial; a imagem é publicada em um
-\textit{registry} (Amazon ECR); e o \textit{managed node group} possui \textbf{mais de um nó},
-permitindo observar a \textbf{distribuição das réplicas entre nós}. Os resultados quantitativos
-(linha do tempo análoga à Tabela~\ref{tab:minikube}, tempo de reação e número de \texttt{Pods}
-por nó) serão coletados no Console e no CloudShell e inseridos nesta seção.
-\_[preencher com os dados da execução em EKS]\_.
+A implantação em EKS reutilizou os mesmos manifestos e o mesmo protocolo, efetivando três
+diferenças operacionais: o \textit{Metrics Server} foi instalado por manifesto oficial; a imagem
+foi obtida de um \textit{registry} público; e o \textit{managed node group} foi provisionado com
+\textbf{dois nós} \texttt{t3.medium} (Amazon Linux 2023, Kubernetes v1.36) em zonas de
+disponibilidade distintas.
+
+No \textbf{baseline}, o HPA reportou \texttt{cpu: 0\%/50\%} com 1 réplica. Sob o teste de estresse,
+o HPA escalou até o teto de 10 réplicas em cerca de \textbf{1,5\,min} --- mais rápido que no
+ambiente local ---, com as transições 1$\to$3$\to$5$\to$9$\to$10. A Tabela~\ref{tab:eks} resume a
+linha do tempo, e os eventos \texttt{SuccessfulRescale} confirmam a progressão para 3, 5, 9 e 10
+réplicas e, após o fim da carga, para 2 e 1 (``\textit{All metrics below target}'').
+
+\begin{table}[!t]
+\caption{Linha do tempo do HPA na implantação Amazon EKS}
+\label{tab:eks}
+\centering
+\footnotesize
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Momento} & \textbf{CPU (atual/alvo)} & \textbf{Réplicas} \\
+\midrule
+Baseline & 0\,\% / 50\,\% & 1 \\
+Início da carga (+0\,s) & 0\,\% / 50\,\% & 1 \\
++20\,s & 113\,\% / 50\,\% & 1 $\to$ 3 \\
++40\,s & 139\,\% / 50\,\% & 5 \\
++60\,s & 122\,\% / 50\,\% & 9 \\
++90\,s & 98\,\% / 50\,\% & \textbf{10} (máx.) \\
+Fim da carga (+0\,s) & 97\,\% / 50\,\% & 10 \\
++90\,s & 0\,\% / 50\,\% & 10 \\
++5\,min (janela) & 0\,\% / 50\,\% & \textbf{10 $\to$ 2 $\to$ 1} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+O ponto que \textbf{distingue o EKS do Minikube} é a distribuição: no pico, as dez réplicas
+ficaram divididas \textbf{5/5 entre os dois nós EC2} (Tabela~\ref{tab:dist}), evidenciando o
+balanceamento de \texttt{Pods} entre nós que um cluster de nó único não permite. O consumo por
+réplica ficou entre 116 e 234\,m de CPU. A dinâmica de descida foi novamente \textbf{conservadora}:
+a CPU caiu a 0\,\% em cerca de 1,5\,min, mas as réplicas permaneceram em 10 durante a janela de
+estabilização de 300\,s antes de retornarem a 1 --- o mesmo comportamento assimétrico observado no
+Minikube, confirmando que ele é uma propriedade do controlador, não da plataforma.
+
+\begin{table}[!t]
+\caption{Distribuição das 10 réplicas entre os nós (EKS, pico)}
+\label{tab:dist}
+\centering
+\footnotesize
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Nó EC2} & \textbf{Réplicas} \\
+\midrule
+\texttt{ip-192-168-76-209} (AZ 1) & 5 \\
+\texttt{ip-192-168-185-242} (AZ 2) & 5 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \section{Análise comparativa}\label{sec:comp}
 A Tabela~\ref{tab:comp} sintetiza a comparação segundo os critérios solicitados. Em seguida,
@@ -401,10 +452,12 @@ Uso indicado & estudo, desenvolvimento & produção, elasticidade real \\
 \end{tabular}
 \end{table}
 
-\textbf{Tempo de reação.} O mecanismo do HPA é o mesmo; espera-se tempo de reação comparável nas
-duas plataformas, pois depende do período de sincronização do controlador (15\,s) e da latência
-do \textit{Metrics Server}, não do provedor. Diferenças podem surgir do intervalo de coleta e da
-escala do cluster.
+\textbf{Tempo de reação.} O mecanismo do HPA é o mesmo; empiricamente, o EKS atingiu o teto de 10
+réplicas em cerca de 1,5\,min, contra cerca de 3\,min no Minikube. A diferença não vem do
+mecanismo (o período de sincronização é 15\,s em ambos), mas do contexto: com dois nós, o EKS
+dispõe de mais CPU agregada, de modo que a utilização média permanece alta por mais tempo e o
+controlador recomenda mais réplicas em cada avaliação; no nó único, a competição por CPU e o
+eventual \textit{throttling} moderam a métrica.
 
 \textbf{Consumo de recursos.} No Minikube, as dez réplicas competem pela CPU de um único nó; se o
 nó saturar, os \texttt{Pods} sofrem \textit{throttling} e a utilização observada deixa de crescer.
@@ -418,6 +471,43 @@ validar o mecanismo. O EKS incorre em custo por hora do plano de controle e das 
 \textbf{Facilidade de gerenciamento.} O Minikube é simples e efêmero (criar/destruir em minutos),
 mas não representa produção. O EKS transfere à AWS a operação do plano de controle, ao custo de
 mais configuração inicial (rede/VPC, IAM, provedor de métricas, \textit{registry}).
+
+A Tabela~\ref{tab:emp} consolida os \textbf{resultados empíricos} das duas execuções reais. Os
+números confirmam que o \emph{alvo} de autoescalamento (1 a 10 réplicas, 50\,\% de CPU) foi
+atingido igualmente, mas com \textbf{tempo de subida menor no EKS} (dois nós, mais CPU agregada) e
+com a \textbf{distribuição de réplicas} que só a topologia multi-nó permite. A descida obedeceu à
+mesma janela de 300\,s nas duas plataformas, reforçando que a assimetria temporal é intrínseca ao
+controlador.
+
+\begin{table}[!t]
+\caption{Comparação empírica das duas execuções reais}
+\label{tab:emp}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{2.6cm}p{2.0cm}p{2.0cm}@{}}
+\toprule
+\textbf{Métrica} & \textbf{Minikube} & \textbf{Amazon EKS} \\
+\midrule
+Réplicas (mín.\,--\,máx.) & 1\,--\,10 & 1\,--\,10 \\
+Transições de subida & 1,4,8,10 & 1,3,5,9,10 \\
+Tempo até o teto & $\approx$3\,min & $\approx$1,5\,min \\
+CPU no pico (média) & 106\,\% & 85\,--\,100\,\% \\
+CPU/réplica no pico & 198\,--\,229\,m & 116\,--\,234\,m \\
+Nós & 1 & 2 \\
+Distribuição no pico & 10 no mesmo nó & 5/5 entre 2 nós \\
+Janela de descida & 300\,s & 300\,s \\
+Custo do experimento & $\approx$0 & $\approx$US\$\,0,50 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{Reprodutibilidade}
+Todos os artefatos --- \texttt{Dockerfile} e código da aplicação, manifestos comentados,
+\textit{scripts} de automação, roteiros passo a passo das duas implantações e as saídas coletadas
+--- estão versionados em repositório público, permitindo que qualquer integrante do grupo
+reproduza os experimentos de forma independente. O roteiro da nuvem indica, etapa a etapa, quais
+recursos criar, quais evidências capturar e a ordem obrigatória de limpeza, minimizando o risco de
+recursos órfãos gerando custo.
 
 \section{Discussão}\label{sec:disc}
 Dois pontos merecem destaque. Primeiro, o \textbf{HPA escala Pods, não nós}: no Minikube de nó
@@ -435,11 +525,23 @@ zonas ou balanceador gerenciado ---, e o EKS passa a compensar seu custo por hor
 as plataformas não é, portanto, de ``melhor'' ou ``pior'', mas de \emph{propósito}: laboratório
 versus produção.
 
-Por fim, a \textbf{assimetria temporal} observada (subida rápida, descida lenta) é uma decisão de
-projeto do controlador que reflete uma preferência por disponibilidade sobre economia imediata: é
+A \textbf{assimetria temporal} observada (subida rápida, descida lenta) é uma decisão de projeto
+do controlador que reflete uma preferência por disponibilidade sobre economia imediata: é
 preferível manter réplicas ociosas por alguns minutos a arriscar remover capacidade prematuramente
 diante de uma carga intermitente. Aplicações com padrões de carga muito irregulares podem ajustar
 as janelas de estabilização para equilibrar custo e disponibilidade.
+
+Do ponto de vista \textbf{econômico}, o autoescalamento só se traduz em economia real quando
+acompanha a elasticidade da \emph{infraestrutura}. No experimento, o HPA reduziu as réplicas de 10
+para 1 ao cessar a carga, mas, no EKS, os \textbf{dois nós EC2 permaneceram provisionados} ---
+e cobrados --- independentemente do número de \texttt{Pods}. A economia de custo de computação só
+se materializaria com um autoescalador de nós (Cluster Autoscaler ou Karpenter) que
+desprovisionasse a capacidade ociosa após a redução das réplicas. Assim, o HPA é condição
+\emph{necessária}, mas não \emph{suficiente}, para elasticidade de custo: ele otimiza a alocação de
+réplicas sobre uma capacidade que precisa, ela mesma, ser elástica. Essa distinção --- entre
+elasticidade de aplicação e elasticidade de infraestrutura --- é central para dimensionar
+corretamente um ambiente de produção e evitar a ilusão de que ``ligar o HPA'' basta para reduzir a
+fatura.
 
 \section{Ameaças à validade}\label{sec:ameacas}
 A carga é \textbf{sintética} e limitada por CPU; aplicações reais podem ser limitadas por memória,
@@ -455,8 +557,10 @@ Demonstrou-se, de ponta a ponta, o autoescalamento horizontal de um servidor web
 implantação local com Minikube, o HPA reagiu a uma carga sintética escalando de 1 para 10 réplicas
 em cerca de três minutos (1$\to$4$\to$8$\to$10) e retornando a uma réplica após a janela de
 estabilização de 300\,s, comprovando empiricamente o mecanismo e sua dinâmica assimétrica (subida
-agressiva, descida conservadora). A implantação em Amazon EKS reutiliza exatamente os mesmos
-manifestos e protocolo, diferindo no substrato operacional (métricas, imagem, multi-nó e custo).
+agressiva, descida conservadora). A implantação em Amazon EKS, com dois nós, reutilizou
+exatamente os mesmos manifestos e protocolo e reproduziu a mesma escala (1 a 10) de forma ainda
+mais rápida (cerca de 1,5\,min), com a diferença marcante de \textbf{distribuir as réplicas entre
+os nós} (5/5) --- balanceamento impossível no nó único local.
 Conclui-se que o \textbf{mecanismo} de autoescalamento é portátil entre as plataformas, mas o
 \textbf{contexto} --- custo, distribuição entre nós e a necessidade de escalar também a capacidade
 de nós --- é o que efetivamente distingue um laboratório local de uma operação elástica em nuvem.
