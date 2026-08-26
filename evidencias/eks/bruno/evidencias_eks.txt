@@ -1,0 +1,203 @@
+====================================================================
+PSI5120 - Avaliacao Intermediaria 1 - Implantacao B (Amazon EKS)
+Evidencias de execucao - Bruno Valle Martins (13681036)
+Regiao: us-east-1 | Cluster: av1-eks (Kubernetes 1.36) | Node group: av1-ng2 (2x t3.medium)
+Data da execucao: 2026-08-25 (madrugada, horario UTC das amostras)
+====================================================================
+
+--- E1) Identidade AWS (nao-root) ---
+$ aws sts get-caller-identity
+  Arn: arn:aws:iam::****:user/psi5120-admin   (Account mascarado)
+
+--- E2) VPC via CloudFormation (av1-vpc: CREATE_COMPLETE) ---
+  Template: amazon-eks-vpc-sample.yaml (template publico da AWS para VPC de EKS)
+  VpcId:          vpc-0551fa57c7fc3b929
+  SubnetIds:      subnet-08318d0f939a964a4, subnet-04c99f31e52ad97b1, subnet-0adaf45750d007c12
+  SecurityGroups: sg-0f9f54f143b36ad52
+  Topologia: 3 sub-redes em 3 zonas de disponibilidade distintas da regiao us-east-1
+
+--- E3) Cluster e node group ativos ---
+$ aws eks describe-cluster ... -> Name=av1-eks Status=ACTIVE Version=1.36 (Auto Mode OFF: computeConfig=null)
+  node group av1-ng2: Active, 2x t3.medium, AL2023, disco 20 GiB, Desired/Min/Max = 2/2/2
+  subnets nas 3 AZs, capacidade On-Demand, acesso remoto desativado
+  Obs.: o node group foi criado como "av1-ng2". A primeira tentativa (av1-ng)
+  nao completou por restricao de plano da conta. Ver NOTAS DE EXECUCAO ao final.
+
+--- E4) Nos Ready + Metrics Server ---
+$ kubectl get nodes -o wide
+ip-192-168-103-87.ec2.internal    Ready   v1.36.2-eks-b3f9404   192.168.103.87    Amazon Linux 2023.12.20260817
+ip-192-168-252-207.ec2.internal   Ready   v1.36.2-eks-b3f9404   192.168.252.207   Amazon Linux 2023.12.20260817
+  kernel 6.18.41-94.142.amzn2023.x86_64 | containerd://2.2.5
+$ kubectl top nodes
+ip-192-168-103-87    41m  2%   529Mi 16%
+ip-192-168-252-207   75m  3%   400Mi 12%
+  Metrics Server provido por: ADD-ON DE COMUNIDADE GERENCIADO PELO EKS
+$ aws eks list-addons -> coredns, eks-node-monitoring-agent, eks-pod-identity-agent,
+  external-dns, kube-proxy, metrics-server, vpc-cni
+
+--- E5) Baseline (antes da carga) ---
+$ kubectl get deployment,hpa,pods -n av1 -o wide
+deployment.apps/web   1/1   registry.k8s.io/hpa-example   selector app=web
+hpa web   cpu: 0%/50%   MIN 1  MAX 10  REPLICAS 1
+pod/web-5f457558bb-5snzv   Running   IP 192.168.198.121   NODE ip-192-168-252-207
+
+--- E6) Teste de estresse: escala SOBE (linha do tempo) ---
+Carga: 5 replicas de busybox:1.36 em laco de requisicoes ao Service "web"
+T0 = 03:30:41 UTC (inicio da carga)
+
+[03:30:41  +0s ]  cpu   0%/50%   REPLICAS 1
+[03:31:02  +21s]  cpu  73%/50%   REPLICAS 1     <- T1, primeira leitura acima do alvo
+[03:31:23  +42s]  cpu 250%/50%   REPLICAS 2     <- T2, primeiro escalamento / pico de CPU
+[03:31:45  +64s]  cpu 169%/50%   REPLICAS 5
+[03:32:06  +85s]  cpu 138%/50%   REPLICAS 10    <- T4, teto de replicas alcancado
+[03:32:27 +106s]  cpu  90%/50%   REPLICAS 10
+[03:32:49 +128s]  cpu  82%/50%   REPLICAS 10
+[03:33:10 +149s]  cpu  93%/50%   REPLICAS 10
+[03:33:31 +170s]  cpu  95%/50%   REPLICAS 10
+[03:33:52 +191s]  cpu  84%/50%   REPLICAS 10
+
+Eventos: SuccessfulRescale New size: 2 / 5 / 10 ("cpu resource utilization
+  (percentage of request) above target")
+
+Tempo de deteccao (T1-T0) ............ 21 s
+Tempo de reacao do HPA (T2-T0) ....... 42 s
+Tempo ate o teto de replicas (T4-T0) . 85 s
+
+ACHADO: no plato, com 10 replicas, a utilizacao estabilizou entre 82% e 95%,
+ou seja, ACIMA do alvo de 50%. O HPA saturou a faixa configurada: pelo algoritmo
+seriam necessarias cerca de 18 replicas para trazer a media de volta a 50%, mas
+maxReplicas=10 limitou. E um resultado valido de saturacao do teto, nao uma falha.
+Reforca que o HPA escala Pods, nao nos: ampliar o teto exigiria mais capacidade
+no cluster (Cluster Autoscaler).
+
+--- E7) Pico: 10 replicas DISTRIBUIDAS 5/5 entre os 2 nos ---
+$ kubectl get pods -n av1 -l app=web -o wide  (resumo por no)
+  ip-192-168-103-87  : 4pzvx, 596mt, jspvd, w9pg4, zb9c9   (5 pods)
+  ip-192-168-252-207 : 5snzv, 5stls, ckb6m, hgvzk, srf2d   (5 pods)
+  Obs.: o pod 5snzv (16m de idade) e o pod original do baseline. Os outros nove
+  (11m) nasceram do escalamento.
+$ kubectl top pods -n av1 -l app=web
+  CPU por replica: 124m a 265m (media ~183m sobre requests de 200m)
+  Memoria por replica: 14Mi a 16Mi
+
+--- E8) Fim da carga: escala DESCE ---
+[03:48:03]  cpu  88%/50%   REPLICAS 10
+  <- carga removida (kubectl delete) entre 03:48:03 e 03:48:24
+[03:48:24]  cpu  49%/50%   REPLICAS 10
+[03:48:44]  cpu   0%/50%   REPLICAS 10   <- CPU zerada, replicas mantidas
+[03:49:05 a 03:53:13]      REPLICAS 10   <- janela de estabilizacao de 300 s
+[03:53:33]  cpu   0%/50%   REPLICAS 1    <- T6/T7, reducao de 10 para 1
+
+Atraso de reducao (CPU=0 ate reducao) ... 4 min 49 s
+Eventos: SuccessfulRescale New size: 1 ("All metrics below target")
+Estado final: hpa cpu 0%/50% REPLICAS 1 ; 1 pod Running
+
+ACHADO: a reducao ocorreu de 10 para 1 em um UNICO evento, sem degraus
+intermediarios, ao contrario da subida (2 -> 5 -> 10). Reflete a assimetria
+declarada no manifesto: scaleUp com janela de 0 s e scaleDown com janela de 300 s.
+O atraso medido de 4 min 49 s confirma numericamente o parametro configurado.
+
+--- E9) LIMPEZA (verificacao final) ---
+== clusters ==        (vazio)
+== instancias ==      i-03b83a6d1c40e52f4  terminated
+                      i-0dd2668a53f635b06  terminated
+== node groups ==     (cluster ja removido)
+== stacks av1 ==      (vazio)
+== roles av1 ==       (vazio)
+Ordem de remocao: namespace av1 -> node group -> cluster -> stack da VPC -> roles IAM
+
+Custo do experimento (Cost Explorer, agosto/2026, agrupado por servico):
+  Servicos identificados na decomposicao de custos:
+    - Amazon Elastic Container Service for Kubernetes (control plane do cluster)
+    - Amazon Elastic Compute Cloud - Compute (2x t3.medium do node group)
+    - Amazon Virtual Private Cloud (NAT Gateway criado pelo template da VPC)
+  Total do mes: aproximadamente US$ 0,30, conforme leitura do grafico de
+  decomposicao de custos (print 13-billing.png). O detalhamento numerico por
+  servico nao foi obtido por limitacao de granularidade no momento da consulta.
+  Como a conta nao registra outro uso relevante em agosto/2026, o total do mes
+  equivale ao custo do experimento.
+  A execucao de referencia do grupo fechou em US$ 0,19. A diferenca decorre das
+  horas adicionais de control plane descritas na nota N6.
+
+  OBSERVACAO RELEVANTE PARA A ANALISE DE CUSTOS: a decomposicao por servico
+  mostra que o custo de um cluster Kubernetes gerenciado nao se resume a taxa
+  horaria do control plane. Ha tambem a computacao dos nos e a infraestrutura de
+  rede (NAT Gateway), componentes que nao existem na implantacao local com
+  Minikube, onde o custo e deslocado para a maquina do operador.
+
+====================================================================
+NOTAS DE EXECUCAO (incidentes e desvios em relacao ao roteiro)
+====================================================================
+
+N1) Role IAM dos nos: caso de uso incorreto na primeira tentativa
+    Ao criar a role dos nos, a selecao inicial recaiu sobre o caso de uso
+    "EC2 - Fleet", que e uma service-linked role. Nesse modo o IAM anexa uma
+    politica fixa (AWSEC2FleetServiceRolePolicy) e nao permite escolher outras,
+    alem de configurar a relacao de confianca para fleet.ec2.amazonaws.com em
+    vez de ec2.amazonaws.com. A role foi refeita com o caso de uso "EC2" simples,
+    com as tres politicas exigidas (AmazonEKSWorkerNodePolicy,
+    AmazonEC2ContainerRegistryPullOnly, AmazonEKS_CNI_Policy).
+
+N2) Conta no plano gratuito: primeiro node group nao completou
+    O node group av1-ng permaneceu em estado "Creating" por mais de 17 minutos
+    sem criar o Auto Scaling Group (autoScalingGroups[0].name = None) e sem
+    registrar problemas de integridade. A causa foi a conta estar no Free plan
+    da AWS, no qual o tipo t3.medium nao e elegivel. Nao houve mensagem de erro
+    explicita no Console. Apos migrar para o plano pago, o node group foi
+    recriado como av1-ng2 e ficou Active normalmente. O nome foi alterado porque
+    o nome anterior permanece reservado enquanto a exclusao nao conclui.
+
+N3) Metrics Server: conflito entre add-on gerenciado e manifesto oficial
+    O assistente de criacao do cluster pre-selecionou o Metrics Server entre os
+    add-ons de comunidade, portanto ele ja estava instalado e gerenciado pelo EKS.
+    A aplicacao subsequente do manifesto oficial
+    (metrics-server/releases/latest/download/components.yaml) falhou com:
+      The Deployment "metrics-server" is invalid:
+      * spec.template.spec.containers[0].ports[1].name: Duplicate value: "https"
+      * spec.selector: Invalid value: {...} field is immutable
+    O seletor de um Deployment e imutavel e a versao do add-on usa rotulos
+    diferentes. Os objetos auxiliares (Service, APIService, RBAC) foram alterados
+    antes do erro, o que deixou a Metrics API indisponivel: os pods do
+    metrics-server ficaram Running e o Deployment 2/2, mas "kubectl top nodes"
+    retornava "error: Metrics API not available".
+    Correcao aplicada:
+      aws eks update-addon --addon-name metrics-server --resolve-conflicts OVERWRITE
+    Apos a restauracao, "kubectl top nodes" voltou a responder normalmente.
+    Licao registrada: em cluster EKS, verificar "aws eks list-addons" ANTES de
+    aplicar o manifesto oficial do Metrics Server.
+
+N4) Warnings historicos nos eventos do HPA
+    O "kubectl describe hpa" exibe dois warnings, FailedGetResourceMetric e
+    FailedComputeMetricsReplicas, com idade de 47 minutos. Eles correspondem ao
+    intervalo anterior a correcao descrita em N3, quando a Metrics API estava
+    indisponivel. Os eventos SuccessfulRescale, de 43 e 42 minutos, sao
+    posteriores e comprovam a operacao normal do controlador. A cronologia das
+    idades confirma que o problema estava resolvido cerca de 4 minutos antes do
+    inicio do experimento.
+
+N5) Interrupcao de sessao do CloudShell durante a fase de reducao
+    A sessao do CloudShell reconectou por ociosidade durante o laco de
+    observacao da descida, o que impediu a captura de tela ao vivo. Os dados nao
+    se perderam porque o laco gravava com "tee -a" em arquivo no diretorio
+    persistente. A linha do tempo completa da reducao foi recuperada do arquivo
+    e os eventos SuccessfulRescale confirmam a reducao. Nao houve necessidade de
+    repetir o ciclo.
+
+N6) Custo acima da execucao de referencia
+    O control plane permaneceu ativo durante a investigacao dos itens N2 e N3,
+    o que eleva o custo total em relacao aos US$ 0,19 da execucao de referencia
+    do grupo. O valor realizado consta em E9 e no print 13-billing.png.
+
+N7) Substituicao da imagem do container em relacao ao repositorio
+    O arquivo k8s/01-deployment.yaml do repositorio aponta para av1-webcpu:v1,
+    imagem construida localmente para o Minikube e inexistente em qualquer
+    registry. Na nuvem foi utilizada a imagem publica registry.k8s.io/hpa-example,
+    mantendo identicos todos os demais parametros (requests 200m, limits 500m,
+    Service ClusterIP na porta 80, HPA alvo 50% com faixa de 1 a 10). Essa e a
+    mesma imagem da execucao de referencia do grupo. Os manifestos efetivamente
+    aplicados estao em manifestos-aplicados-bruno.yaml, nesta pasta.
+
+====================================================================
+Screenshots (evidencia fotografica) correspondentes: ver arquivos PNG nesta pasta.
+Indice das imagens: ver LEIA-screenshots.md
+====================================================================
