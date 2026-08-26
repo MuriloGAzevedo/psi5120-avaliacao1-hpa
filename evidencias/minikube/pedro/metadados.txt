@@ -1,0 +1,18 @@
+== Av1 | Implantacao A (Minikube) | Metadados | Pedro Remus de Ávila ==
+Data: 2026-08-24T14:24:53-03:00 | Host: RemusPC | Usuario: pedro
+----------------------------------------------------------------
+$ minikube version
+minikube version: v1.38.1
+$ kubectl version
+Client Version: v1.36.3
+Kustomize Version: v5.8.1
+Server Version: v1.35.1
+$ docker --version
+Docker version 28.5.2, build ecc6942
+$ kubectl get nodes -o wide
+NAME        STATUS   ROLES           AGE   VERSION   INTERNAL-IP    EXTERNAL-IP   OS-IMAGE                         KERNEL-VERSION                      CONTAINER-RUNTIME
+av1-local   Ready    control-plane   18m   v1.35.1   192.168.49.2   <none>        Debian GNU/Linux 12 (bookworm)   6.18.33.2-microsoft-standard-WSL2   docker://29.2.1
+$ nproc / free -h
+4
+               total        used        free      shared  buff/cache   available
+Mem:           5.8Gi       1.8Gi       573Mi        15Mi       3.6Gi       4.0Gi

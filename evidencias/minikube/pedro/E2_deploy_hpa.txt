@@ -1,0 +1,25 @@
+== Av1 | Implantacao A | E2 - Deployment, Service e HPA ==
+Pessoa: Pedro Remus de Ávila | Data: 2026-08-24T14:08:26-03:00
+----------------------------------------------------------------
+$ kubectl apply -f k8s/00-namespace.yaml -f k8s/01-deployment.yaml -f k8s/02-service.yaml
+namespace/av1 created
+deployment.apps/web created
+service/web created
+Waiting for deployment "web" rollout to finish: 0 of 1 updated replicas are available...
+deployment "web" successfully rolled out
+----------------------------------------------------------------
+$ kubectl apply -f k8s/03-hpa.yaml
+horizontalpodautoscaler.autoscaling/web created
+----------------------------------------------------------------
+aguardando o Metrics Server reportar CPU ao HPA (pode levar ~1-2 min)...
+métricas disponíveis.
+----------------------------------------------------------------
+$ kubectl get deployment,hpa,pods -n av1
+NAME                  READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/web   1/1     1            1           113s
+
+NAME                                      REFERENCE        TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/web   Deployment/web   cpu: 0%/50%   1         10        1          109s
+
+NAME                       READY   STATUS    RESTARTS   AGE
+pod/web-6578978fc7-wrfhr   1/1     Running   0          113s
