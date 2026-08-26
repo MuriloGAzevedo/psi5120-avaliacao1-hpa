@@ -1,5 +1,5 @@
 == Av1 | Implantacao A | E2 - Deployment, Service e HPA ==
-Pessoa: Bruno Valle Martins | Data: 2026-08-26T10:03:20+00:00
+Pessoa: Bruno Valle Martins | Data: 2026-08-26T11:13:05+00:00
 ----------------------------------------------------------------
 $ kubectl apply -f k8s/00-namespace.yaml -f k8s/01-deployment.yaml -f k8s/02-service.yaml
 namespace/av1 created
@@ -16,10 +16,10 @@ métricas disponíveis.
 ----------------------------------------------------------------
 $ kubectl get deployment,hpa,pods -n av1
 NAME                  READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/web   1/1     1            1           94s
+deployment.apps/web   1/1     1            1           93s
 
 NAME                                      REFERENCE        TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
-horizontalpodautoscaler.autoscaling/web   Deployment/web   cpu: 0%/50%   1         10        1          92s
+horizontalpodautoscaler.autoscaling/web   Deployment/web   cpu: 0%/50%   1         10        1          91s
 
 NAME                       READY   STATUS    RESTARTS   AGE
-pod/web-6578978fc7-tddm6   1/1     Running   0          94s
+pod/web-6578978fc7-snwpp   1/1     Running   0          93s

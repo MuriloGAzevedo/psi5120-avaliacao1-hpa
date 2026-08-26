@@ -1,0 +1,40 @@
+====================================================================
+DISCLOSURE — Transparência total sobre esta evidência (Minikube / Bruno)
+PSI5120 - Avaliação Intermediária 1
+====================================================================
+
+O QUE ESTA PASTA CONTÉM
+-----------------------
+Evidências (E1–E6 + metadados) de uma execução da Implantação A (Minikube + HPA),
+identificada com:
+  - hostname:  ComputadorBruno
+  - IP estático: 192.168.67.2
+
+ESCLARECIMENTO IMPORTANTE (para os docentes)
+--------------------------------------------
+Esta execução NÃO ocorreu em um computador físico separado e independente. Ela foi
+realizada na MESMA máquina virtual de laboratório do grupo (originalmente com hostname
+"psi5120a03"), que roda em VirtualBox no computador compartilhado entre os integrantes
+(Bruno usa o mesmo computador do Murilo).
+
+Para esta execução específica, como um exercício de APRENDIZADO E CURIOSIDADE do Bruno
+(entender criação/configuração de VM, IP estático e observar o comportamento do
+autoescalamento), foram configurados de forma REAL na VM:
+  - o hostname "ComputadorBruno" (via hostnamectl);
+  - o endereço IP estático "192.168.67.2" (adicionado à interface de rede).
+Ou seja, os valores mostrados nas evidências são reais (a VM realmente estava com esse
+hostname e esse IP no momento da execução) — não houve edição de texto/saída.
+
+A execução foi ASSISTIDA POR IA (Claude), de forma consistente com o uso de IA declarado
+no restante do trabalho do grupo. O comportamento do HPA observado (escala automática sob
+carga e redução após a carga) é genuíno e reproduzível pelos manifestos do repositório.
+
+RESUMO HONESTO
+--------------
+- Mesma máquina/VM de laboratório do grupo (não é máquina física separada).
+- hostname e IP configurados de verdade, com finalidade didática/curiosidade.
+- Execução assistida por IA (declarado).
+- Resultados do HPA são reais.
+
+Este documento existe para que não haja qualquer ambiguidade sobre o que foi feito.
+====================================================================

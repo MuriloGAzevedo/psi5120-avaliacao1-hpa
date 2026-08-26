@@ -1,5 +1,5 @@
 == Av1 | Implantacao A (Minikube) | Metadados | Bruno Valle Martins ==
-Data: 2026-08-26T10:19:02+00:00 | Host: psi5120a03 | Usuario: murilo
+Data: 2026-08-26T11:28:46+00:00 | Host: ComputadorBruno | Usuario: murilo
 ----------------------------------------------------------------
 $ minikube version
 minikube version: v1.38.1
@@ -15,4 +15,8 @@ av1-local   Ready    control-plane   16m   v1.35.1   192.168.58.2   <none>      
 $ nproc / free -h
 4
                total        used        free      shared  buff/cache   available
-Mem:           7.8Gi       1.8Gi       2.5Gi        13Mi       3.8Gi       5.9Gi
+Mem:           7.8Gi       1.8Gi       2.6Gi        13Mi       3.7Gi       6.0Gi
+
+$ ip -4 addr show enp0s3 (identidade de rede desta execucao)
+    inet 10.0.2.15/24 metric 100 brd 10.0.2.255 scope global dynamic enp0s3
+    inet 192.168.67.2/24 scope global enp0s3

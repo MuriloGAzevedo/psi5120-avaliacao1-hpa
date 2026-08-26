@@ -1,5 +1,5 @@
 == Av1 | Implantacao A (Minikube) | E1 - Ambiente + Metrics Server ==
-Pessoa: Bruno Valle Martins | Host: psi5120a03 | Data: 2026-08-26T10:02:00+00:00
+Pessoa: Bruno Valle Martins | Host: ComputadorBruno | Data: 2026-08-26T11:11:54+00:00
 ----------------------------------------------------------------
 $ minikube start -p av1-local --driver=docker
 * [av1-local] minikube v1.38.1 on Ubuntu 24.04
@@ -22,6 +22,6 @@ You can view the list of minikube maintainers at: https://github.com/kubernetes/
 ----------------------------------------------------------------
 $ kubectl get nodes -o wide
 NAME        STATUS   ROLES           AGE   VERSION   INTERNAL-IP    EXTERNAL-IP   OS-IMAGE                         KERNEL-VERSION      CONTAINER-RUNTIME
-av1-local   Ready    control-plane   5s    v1.35.1   192.168.58.2   <none>        Debian GNU/Linux 12 (bookworm)   6.8.0-136-generic   docker://29.2.1
+av1-local   Ready    control-plane   6s    v1.35.1   192.168.58.2   <none>        Debian GNU/Linux 12 (bookworm)   6.8.0-136-generic   docker://29.2.1
 $ kubectl version (server)
 Server Version: v1.35.1
