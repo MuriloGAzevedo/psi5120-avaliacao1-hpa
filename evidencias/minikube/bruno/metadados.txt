@@ -1,0 +1,18 @@
+== Av1 | Implantacao A (Minikube) | Metadados | Bruno Valle Martins ==
+Data: 2026-08-26T10:19:02+00:00 | Host: psi5120a03 | Usuario: murilo
+----------------------------------------------------------------
+$ minikube version
+minikube version: v1.38.1
+$ kubectl version
+Client Version: v1.36.3
+Kustomize Version: v5.8.1
+Server Version: v1.35.1
+$ docker --version
+Docker version 28.5.2, build ecc6942
+$ kubectl get nodes -o wide
+NAME        STATUS   ROLES           AGE   VERSION   INTERNAL-IP    EXTERNAL-IP   OS-IMAGE                         KERNEL-VERSION      CONTAINER-RUNTIME
+av1-local   Ready    control-plane   16m   v1.35.1   192.168.58.2   <none>        Debian GNU/Linux 12 (bookworm)   6.8.0-136-generic   docker://29.2.1
+$ nproc / free -h
+4
+               total        used        free      shared  buff/cache   available
+Mem:           7.8Gi       1.8Gi       2.5Gi        13Mi       3.8Gi       5.9Gi

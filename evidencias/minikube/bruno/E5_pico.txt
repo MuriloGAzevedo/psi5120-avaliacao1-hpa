@@ -1,0 +1,73 @@
+== Av1 | Implantacao A | E5 - PICO (durante o estresse) ==
+Pessoa: Bruno Valle Martins | Data: 2026-08-26T10:10:57+00:00 | hora=10:10:57
+----------------------------------------------------------------
+$ kubectl get hpa web -n av1
+NAME   REFERENCE        TARGETS         MINPODS   MAXPODS   REPLICAS   AGE
+web    Deployment/web   cpu: 106%/50%   1         10        10         7m35s
+$ kubectl get deployment web -n av1
+NAME   READY   UP-TO-DATE   AVAILABLE   AGE
+web    10/10   10           10          7m37s
+$ kubectl get pods -n av1 -l app=web -o wide
+NAME                   READY   STATUS    RESTARTS   AGE     IP            NODE        NOMINATED NODE   READINESS GATES
+web-6578978fc7-7wnd7   1/1     Running   0          3m4s    10.244.0.13   av1-local   <none>           <none>
+web-6578978fc7-88kqd   1/1     Running   0          5m4s    10.244.0.12   av1-local   <none>           <none>
+web-6578978fc7-8pcjb   1/1     Running   0          5m4s    10.244.0.11   av1-local   <none>           <none>
+web-6578978fc7-8tr8s   1/1     Running   0          2m49s   10.244.0.17   av1-local   <none>           <none>
+web-6578978fc7-9dmst   1/1     Running   0          3m4s    10.244.0.14   av1-local   <none>           <none>
+web-6578978fc7-frg82   1/1     Running   0          2m49s   10.244.0.18   av1-local   <none>           <none>
+web-6578978fc7-k26b5   1/1     Running   0          3m4s    10.244.0.15   av1-local   <none>           <none>
+web-6578978fc7-ncf25   1/1     Running   0          5m4s    10.244.0.10   av1-local   <none>           <none>
+web-6578978fc7-nv58d   1/1     Running   0          3m4s    10.244.0.16   av1-local   <none>           <none>
+web-6578978fc7-tddm6   1/1     Running   0          7m37s   10.244.0.4    av1-local   <none>           <none>
+$ kubectl top pods -n av1 -l app=web
+NAME                   CPU(cores)   MEMORY(bytes)   
+web-6578978fc7-7wnd7   211m         15Mi            
+web-6578978fc7-88kqd   233m         17Mi            
+web-6578978fc7-8pcjb   214m         17Mi            
+web-6578978fc7-8tr8s   201m         15Mi            
+web-6578978fc7-9dmst   200m         16Mi            
+web-6578978fc7-frg82   207m         15Mi            
+web-6578978fc7-k26b5   217m         16Mi            
+web-6578978fc7-ncf25   214m         17Mi            
+web-6578978fc7-nv58d   199m         16Mi            
+web-6578978fc7-tddm6   226m         17Mi            
+$ kubectl describe hpa web -n av1 (eventos de escala)
+Name:                                                  web
+Namespace:                                             av1
+Labels:                                                <none>
+Annotations:                                           <none>
+CreationTimestamp:                                     Wed, 26 Aug 2026 10:03:22 +0000
+Reference:                                             Deployment/web
+Metrics:                                               ( current / target )
+  resource cpu on pods  (as a percentage of request):  106% (212m) / 50%
+Min replicas:                                          1
+Max replicas:                                          10
+Behavior:
+  Scale Up:
+    Stabilization Window: 0 seconds
+    Select Policy: Max
+    Policies:
+      - Type: Pods     Value: 4    Period: 15 seconds
+      - Type: Percent  Value: 100  Period: 15 seconds
+  Scale Down:
+    Stabilization Window: 300 seconds
+    Select Policy: Max
+    Policies:
+      - Type: Percent  Value: 100  Period: 15 seconds
+Deployment pods:       10 current / 10 desired
+Conditions:
+  Type            Status  Reason            Message
+  ----            ------  ------            -------
+  AbleToScale     True    ReadyForNewScale  recommended size matches current size
+  ScalingActive   True    ValidMetricFound  the HPA was able to successfully calculate a replica count from cpu resource utilization (percentage of request)
+  ScalingLimited  True    TooManyReplicas   the desired replica count is more than the maximum replica count
+Events:
+  Type     Reason                        Age                   From                       Message
+  ----     ------                        ----                  ----                       -------
+  Warning  FailedGetResourceMetric       7m21s                 horizontal-pod-autoscaler  failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedComputeMetricsReplicas  7m21s                 horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedGetResourceMetric       6m21s (x4 over 7m6s)  horizontal-pod-autoscaler  failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+  Warning  FailedComputeMetricsReplicas  6m21s (x4 over 7m6s)  horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+  Normal   SuccessfulRescale             5m5s                  horizontal-pod-autoscaler  New size: 4; reason: cpu resource utilization (percentage of request) above target
+  Normal   SuccessfulRescale             3m5s                  horizontal-pod-autoscaler  New size: 8; reason: cpu resource utilization (percentage of request) above target
+  Normal   SuccessfulRescale             2m50s                 horizontal-pod-autoscaler  New size: 10; reason: cpu resource utilization (percentage of request) above target

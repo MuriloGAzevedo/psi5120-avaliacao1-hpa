@@ -1,0 +1,28 @@
+== Av1 | Implantacao A | E4 - TESTE DE ESTRESSE: escala SOBE ==
+Pessoa: Bruno Valle Martins | Data: 2026-08-26T10:04:54+00:00
+----------------------------------------------------------------
+$ kubectl apply -f k8s/04-load-generator.yaml   (inicia a carga)
+deployment.apps/load-generator created
+hora de inicio da carga: 10:04:54
+----------------------------------------------------------------
+Linha do tempo (HPA e nº de Pods a cada 20s):
+[10:04:54] HPA: web   Deployment/web   cpu: 0%/50%   1     10    1     92s | Pods Running(app=web): 1
+[10:05:14] HPA: web   Deployment/web   cpu: 0%/50%   1     10    1     112s | Pods Running(app=web): 1
+[10:05:35] HPA: web   Deployment/web   cpu: 0%/50%   1     10    1     2m12s | Pods Running(app=web): 1
+[10:05:55] HPA: web   Deployment/web   cpu: 171%/50%   1     10    1     2m33s | Pods Running(app=web): 4
+[10:06:15] HPA: web   Deployment/web   cpu: 171%/50%   1     10    4     2m53s | Pods Running(app=web): 4
+[10:06:35] HPA: web   Deployment/web   cpu: 171%/50%   1     10    4     3m13s | Pods Running(app=web): 4
+[10:06:55] HPA: web   Deployment/web   cpu: 200%/50%   1     10    4     3m33s | Pods Running(app=web): 4
+[10:07:15] HPA: web   Deployment/web   cpu: 200%/50%   1     10    4     3m53s | Pods Running(app=web): 4
+[10:07:36] HPA: web   Deployment/web   cpu: 200%/50%   1     10    4     4m13s | Pods Running(app=web): 4
+[10:07:56] HPA: web   Deployment/web   cpu: 172%/50%   1     10    4     4m34s | Pods Running(app=web): 8
+[10:08:16] HPA: web   Deployment/web   cpu: 172%/50%   1     10    8     4m54s | Pods Running(app=web): 10
+[10:08:36] HPA: web   Deployment/web   cpu: 172%/50%   1     10    10    5m14s | Pods Running(app=web): 10
+[10:08:56] HPA: web   Deployment/web   cpu: 122%/50%   1     10    10    5m34s | Pods Running(app=web): 10
+[10:09:16] HPA: web   Deployment/web   cpu: 122%/50%   1     10    10    5m54s | Pods Running(app=web): 10
+[10:09:37] HPA: web   Deployment/web   cpu: 122%/50%   1     10    10    6m15s | Pods Running(app=web): 10
+[10:09:57] HPA: web   Deployment/web   cpu: 106%/50%   1     10    10    6m35s | Pods Running(app=web): 10
+[10:10:17] HPA: web   Deployment/web   cpu: 106%/50%   1     10    10    6m55s | Pods Running(app=web): 10
+[10:10:37] HPA: web   Deployment/web   cpu: 106%/50%   1     10    10    7m15s | Pods Running(app=web): 10
+----------------------------------------------------------------
+pico de replicas desejadas observado (REPLICAS do HPA): 1

@@ -1,0 +1,27 @@
+== Av1 | Implantacao A (Minikube) | E1 - Ambiente + Metrics Server ==
+Pessoa: Bruno Valle Martins | Host: psi5120a03 | Data: 2026-08-26T10:02:00+00:00
+----------------------------------------------------------------
+$ minikube start -p av1-local --driver=docker
+* [av1-local] minikube v1.38.1 on Ubuntu 24.04
+* Using the docker driver based on user configuration
+! Starting v1.39.0, minikube will default to "containerd" container runtime. See #21973 for more info.
+* Using Docker driver with root privileges
+* Starting "av1-local" primary control-plane node in "av1-local" cluster
+* Pulling base image v0.0.50 ...
+* Configuring bridge CNI (Container Networking Interface) ...
+* Verifying Kubernetes components...
+  - Using image gcr.io/k8s-minikube/storage-provisioner:v5
+* Enabled addons: storage-provisioner, default-storageclass
+* Done! kubectl is now configured to use "av1-local" cluster and "default" namespace by default
+----------------------------------------------------------------
+$ minikube addons enable metrics-server -p av1-local
+* metrics-server is an addon maintained by Kubernetes. For any concerns contact minikube on GitHub.
+You can view the list of minikube maintainers at: https://github.com/kubernetes/minikube/blob/master/OWNERS
+  - Using image registry.k8s.io/metrics-server/metrics-server:v0.8.1
+* The 'metrics-server' addon is enabled
+----------------------------------------------------------------
+$ kubectl get nodes -o wide
+NAME        STATUS   ROLES           AGE   VERSION   INTERNAL-IP    EXTERNAL-IP   OS-IMAGE                         KERNEL-VERSION      CONTAINER-RUNTIME
+av1-local   Ready    control-plane   5s    v1.35.1   192.168.58.2   <none>        Debian GNU/Linux 12 (bookworm)   6.8.0-136-generic   docker://29.2.1
+$ kubectl version (server)
+Server Version: v1.35.1
