@@ -12,9 +12,8 @@ carga (estresse de CPU)** e **reduzir** as réplicas quando a carga cessa, compa
 **Autores (grupo):** Murilo Gabriel Moraes de Azevedo (13782776), Bruno Valle Martins (13681036),
 Pedro Remus de Ávila (13682486) · PSI5120 — 2026.
 
-> ⭐ **Execução de referência:** as evidências em `evidencias/` (Minikube + EKS) são da execução realizada por
-> **Murilo** e servem de referência do grupo. Cada integrante deve reproduzir as duas implantações seguindo o
-> **[GUIA_EXECUCAO_PARA_O_GRUPO.md](GUIA_EXECUCAO_PARA_O_GRUPO.md)** e guardar suas próprias evidências.
+> **Execução individual:** cada integrante realizou as **duas** implantações (Minikube + EKS). As evidências
+> de cada um estão em `evidencias/minikube/<nome>/` e `evidencias/eks/<nome>/`. O artigo é redigido em grupo.
 
 ## Estrutura do repositório
 
