@@ -1,0 +1,306 @@
+====================================================================
+PSI5120 - Avaliacao Intermediaria 1 - Implantacao B (Amazon EKS)
+Evidencias de execucao - Pedro Remus de Ávila | Gerado em: 2026-08-25T00:52:47+00:00
+Regiao: us-east-1 | Cluster: av1-eks | Node group: av1-ng
+====================================================================
+
+--- E1) Identidade AWS (nao-root) + checagem de conflito de nomes ---
+$ aws sts get-caller-identity
+  Arn: arn:aws:iam::****:user/pedro-psi5120   (Account mascarado automaticamente)
+
+$ checagem de conflito de nomes (deve dizer que ainda nao existe)
+  stack av1-vpc: ainda nao existe (ok)
+  cluster av1-eks: ainda nao existe (ok)
+
+
+--- E2) VPC via CloudFormation (av1-vpc: outputs) ---
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+|                                                                                 DescribeStacks                                                                                 |
++-------------------------------------------------------------------------------+-----------------+------------------------------------------------------------------------------+
+|                                  Description                                  |    OutputKey    |                                 OutputValue                                  |
++-------------------------------------------------------------------------------+-----------------+------------------------------------------------------------------------------+
+|  Security group for the cluster control plane communication with worker nodes |  SecurityGroups |  sg-0420a878a54f96594                                                        |
+|  The VPC Id                                                                   |  VpcId          |  vpc-09224a6d384596e5c                                                       |
+|  All subnets in the VPC                                                       |  SubnetIds      |  subnet-04348895aab901d6b,subnet-0385f1f19fbcd7dfd,subnet-0f09330f7eb437629  |
++-------------------------------------------------------------------------------+-----------------+------------------------------------------------------------------------------+
+
+--- E3) Cluster e node group ativos ---
+----------------------------------------------
+|               DescribeCluster              |
++----------------------+---------+-----------+
+|  AutoModeDeveSerNull | Status  |  Version  |
++----------------------+---------+-----------+
+|  None                |  ACTIVE |  1.36     |
++----------------------+---------+-----------+
+-----------------------
+|  DescribeNodegroup  |
++----------+----------+
+|  Desired | Status   |
++----------+----------+
+|  2       |  ACTIVE  |
++----------+----------+
+||   InstanceTypes   ||
+|+-------------------+|
+||  t3.medium        ||
+|+-------------------+|
+NAME                              STATUS   ROLES    AGE   VERSION               INTERNAL-IP       EXTERNAL-IP    OS-IMAGE                        KERNEL-VERSION                           CONTAINER-RUNTIME
+ip-192-168-202-163.ec2.internal   Ready    <none>   13m   v1.36.2-eks-b3f9404   192.168.202.163   3.84.114.209   Amazon Linux 2023.12.20260817   6.18.41-94.142.amzn2023.x86_64 (amd64)   containerd://2.2.5+unknown
+ip-192-168-92-63.ec2.internal     Ready    <none>   13m   v1.36.2-eks-b3f9404   192.168.92.63     3.209.11.114   Amazon Linux 2023.12.20260817   6.18.41-94.142.amzn2023.x86_64 (amd64)   containerd://2.2.5+unknown
+
+--- E4) Nos Ready + Metrics Server ---
+NAME                              STATUS   ROLES    AGE   VERSION               INTERNAL-IP       EXTERNAL-IP    OS-IMAGE                        KERNEL-VERSION                           CONTAINER-RUNTIME
+ip-192-168-202-163.ec2.internal   Ready    <none>   13m   v1.36.2-eks-b3f9404   192.168.202.163   3.84.114.209   Amazon Linux 2023.12.20260817   6.18.41-94.142.amzn2023.x86_64 (amd64)   containerd://2.2.5+unknown
+ip-192-168-92-63.ec2.internal     Ready    <none>   13m   v1.36.2-eks-b3f9404   192.168.92.63     3.209.11.114   Amazon Linux 2023.12.20260817   6.18.41-94.142.amzn2023.x86_64 (amd64)   containerd://2.2.5+unknown
+NAME                              CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)
+ip-192-168-202-163.ec2.internal   18m          0%       408Mi           12%
+ip-192-168-92-63.ec2.internal     27m          1%       373Mi           11%
+
+
+--- E5) Baseline (antes da carga) ---
+NAME                  READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES                        SELECTOR
+deployment.apps/web   1/1     1            1           71s   web          registry.k8s.io/hpa-example   app=web
+
+NAME                                      REFERENCE        TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/web   Deployment/web   cpu: 0%/50%   1         10        1          71s
+
+NAME                       READY   STATUS    RESTARTS   AGE   IP                NODE                            NOMINATED NODE   READINESS GATES
+pod/web-5f457558bb-vw2x2   1/1     Running   0          71s   192.168.111.135   ip-192-168-92-63.ec2.internal   <none>           <none>
+
+
+--- E6) Teste de estresse: escala SOBE (linha do tempo) ---
+[02:45:08] web   Deployment/web   cpu: 0%/50%   1     10    1     4m48s
+   web-5f457558bb-vw2x2  -> ip-192-168-92-63.ec2.internal
+---
+[02:45:30] web   Deployment/web   cpu: 98%/50%   1     10    1     5m9s
+   web-5f457558bb-g5kmd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-vw2x2  -> ip-192-168-92-63.ec2.internal
+---
+[02:45:51] web   Deployment/web   cpu: 98%/50%   1     10    1     5m31s
+   web-5f457558bb-g5kmd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-vw2x2  -> ip-192-168-92-63.ec2.internal
+---
+[02:46:12] web   Deployment/web   cpu: 139%/50%   1     10    2     5m52s
+   web-5f457558bb-7t2dd  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-g5kmd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-h4sr5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-vw2x2  -> ip-192-168-92-63.ec2.internal
+---
+[02:46:34] web   Deployment/web   cpu: 158%/50%   1     10    8     6m13s
+   web-5f457558bb-25scz  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-2s6kd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-45kc5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-7t2dd  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-g5kmd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-h4sr5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-l8p4c  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-lt5gj  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-vw2x2  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-zkmlg  -> ip-192-168-92-63.ec2.internal
+---
+[02:46:55] web   Deployment/web   cpu: 105%/50%   1     10    10    6m34s
+   web-5f457558bb-25scz  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-2s6kd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-45kc5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-7t2dd  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-g5kmd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-h4sr5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-l8p4c  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-lt5gj  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-vw2x2  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-zkmlg  -> ip-192-168-92-63.ec2.internal
+---
+[02:47:16] web   Deployment/web   cpu: 97%/50%   1     10    10    6m56s
+   web-5f457558bb-25scz  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-2s6kd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-45kc5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-7t2dd  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-g5kmd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-h4sr5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-l8p4c  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-lt5gj  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-vw2x2  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-zkmlg  -> ip-192-168-92-63.ec2.internal
+---
+[02:47:38] web   Deployment/web   cpu: 88%/50%   1     10    10    7m17s
+   web-5f457558bb-25scz  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-2s6kd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-45kc5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-7t2dd  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-g5kmd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-h4sr5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-l8p4c  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-lt5gj  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-vw2x2  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-zkmlg  -> ip-192-168-92-63.ec2.internal
+---
+[02:47:59] web   Deployment/web   cpu: 92%/50%   1     10    10    7m38s
+   web-5f457558bb-25scz  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-2s6kd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-45kc5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-7t2dd  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-g5kmd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-h4sr5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-l8p4c  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-lt5gj  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-vw2x2  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-zkmlg  -> ip-192-168-92-63.ec2.internal
+---
+[02:48:20] web   Deployment/web   cpu: 88%/50%   1     10    10    8m
+   web-5f457558bb-25scz  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-2s6kd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-45kc5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-7t2dd  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-g5kmd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-h4sr5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-l8p4c  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-lt5gj  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-vw2x2  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-zkmlg  -> ip-192-168-92-63.ec2.internal
+---
+[02:48:41] web   Deployment/web   cpu: 92%/50%   1     10    10    8m21s
+   web-5f457558bb-25scz  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-2s6kd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-45kc5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-7t2dd  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-g5kmd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-h4sr5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-l8p4c  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-lt5gj  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-vw2x2  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-zkmlg  -> ip-192-168-92-63.ec2.internal
+---
+[02:49:03] web   Deployment/web   cpu: 93%/50%   1     10    10    8m42s
+   web-5f457558bb-25scz  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-2s6kd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-45kc5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-7t2dd  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-g5kmd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-h4sr5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-l8p4c  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-lt5gj  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-vw2x2  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-zkmlg  -> ip-192-168-92-63.ec2.internal
+---
+[02:49:24] web   Deployment/web   cpu: 86%/50%   1     10    10    9m4s
+   web-5f457558bb-25scz  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-2s6kd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-45kc5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-7t2dd  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-g5kmd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-h4sr5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-l8p4c  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-lt5gj  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-vw2x2  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-zkmlg  -> ip-192-168-92-63.ec2.internal
+---
+[02:49:45] web   Deployment/web   cpu: 95%/50%   1     10    10    9m25s
+   web-5f457558bb-25scz  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-2s6kd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-45kc5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-7t2dd  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-g5kmd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-h4sr5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-l8p4c  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-lt5gj  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-vw2x2  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-zkmlg  -> ip-192-168-92-63.ec2.internal
+---
+[02:50:06] web   Deployment/web   cpu: 90%/50%   1     10    10    9m46s
+   web-5f457558bb-25scz  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-2s6kd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-45kc5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-7t2dd  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-g5kmd  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-h4sr5  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-l8p4c  -> ip-192-168-202-163.ec2.internal
+   web-5f457558bb-lt5gj  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-vw2x2  -> ip-192-168-92-63.ec2.internal
+   web-5f457558bb-zkmlg  -> ip-192-168-92-63.ec2.internal
+---
+
+--- E7) Pico: réplicas distribuídas entre os nós ---
+NAME                   READY   STATUS    RESTARTS   AGE     IP                NODE                              NOMINATED NODE   READINESS GATES
+web-5f457558bb-25scz   1/1     Running   0          3m54s   192.168.121.154   ip-192-168-92-63.ec2.internal     <none>           <none>
+web-5f457558bb-2s6kd   1/1     Running   0          4m9s    192.168.219.161   ip-192-168-202-163.ec2.internal   <none>           <none>
+web-5f457558bb-45kc5   1/1     Running   0          4m9s    192.168.215.160   ip-192-168-202-163.ec2.internal   <none>           <none>
+web-5f457558bb-7t2dd   1/1     Running   0          4m24s   192.168.115.164   ip-192-168-92-63.ec2.internal     <none>           <none>
+web-5f457558bb-g5kmd   1/1     Running   0          5m8s    192.168.198.107   ip-192-168-202-163.ec2.internal   <none>           <none>
+web-5f457558bb-h4sr5   1/1     Running   0          4m24s   192.168.202.14    ip-192-168-202-163.ec2.internal   <none>           <none>
+web-5f457558bb-l8p4c   1/1     Running   0          3m54s   192.168.221.225   ip-192-168-202-163.ec2.internal   <none>           <none>
+web-5f457558bb-lt5gj   1/1     Running   0          4m9s    192.168.66.121    ip-192-168-92-63.ec2.internal     <none>           <none>
+web-5f457558bb-vw2x2   1/1     Running   0          10m     192.168.111.135   ip-192-168-92-63.ec2.internal     <none>           <none>
+web-5f457558bb-zkmlg   1/1     Running   0          4m9s    192.168.85.153    ip-192-168-92-63.ec2.internal     <none>           <none>
+distribuicao por no (pods por NODE):
+      5 ip-192-168-202-163.ec2.internal
+      5 ip-192-168-92-63.ec2.internal
+NAME                   CPU(cores)   MEMORY(bytes)
+web-5f457558bb-25scz   188m         15Mi
+web-5f457558bb-2s6kd   239m         15Mi
+web-5f457558bb-45kc5   224m         15Mi
+web-5f457558bb-7t2dd   144m         14Mi
+web-5f457558bb-g5kmd   193m         15Mi
+web-5f457558bb-h4sr5   174m         14Mi
+web-5f457558bb-l8p4c   108m         13Mi
+web-5f457558bb-lt5gj   221m         15Mi
+web-5f457558bb-vw2x2   201m         15Mi
+web-5f457558bb-zkmlg   170m         15Mi
+Events:
+  Type     Reason                        Age    From                       Message
+  ----     ------                        ----   ----                       -------
+  Warning  FailedGetResourceMetric       9m54s  horizontal-pod-autoscaler  failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedComputeMetricsReplicas  9m54s  horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedGetResourceMetric       9m39s  horizontal-pod-autoscaler  failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+  Warning  FailedComputeMetricsReplicas  9m39s  horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+  Normal   SuccessfulRescale             5m10s  horizontal-pod-autoscaler  New size: 2; reason: cpu resource utilization (percentage of request) above target
+  Normal   SuccessfulRescale             4m26s  horizontal-pod-autoscaler  New size: 4; reason: cpu resource utilization (percentage of request) above target
+  Normal   SuccessfulRescale             4m11s  horizontal-pod-autoscaler  New size: 8; reason: cpu resource utilization (percentage of request) above target
+  Normal   SuccessfulRescale             3m56s  horizontal-pod-autoscaler  New size: 10; reason: cpu resource utilization (percentage of request) above target
+
+
+--- E8) Fim da carga: escala DESCE ---
+[03:01:57] web   Deployment/web   cpu: 91%/50%   1     10    10    21m
+[03:02:18] web   Deployment/web   cpu: 95%/50%   1     10    10    21m
+[03:02:38] web   Deployment/web   cpu: 94%/50%   1     10    10    22m
+[03:02:59] web   Deployment/web   cpu: 6%/50%   1     10    10    22m
+[03:03:20] web   Deployment/web   cpu: 0%/50%   1     10    10    22m
+[03:03:40] web   Deployment/web   cpu: 0%/50%   1     10    10    23m
+[03:04:01] web   Deployment/web   cpu: 0%/50%   1     10    10    23m
+[03:04:22] web   Deployment/web   cpu: 0%/50%   1     10    10    24m
+[03:04:42] web   Deployment/web   cpu: 0%/50%   1     10    10    24m
+[03:05:03] web   Deployment/web   cpu: 0%/50%   1     10    10    24m
+[03:05:23] web   Deployment/web   cpu: 0%/50%   1     10    10    25m
+[03:05:44] web   Deployment/web   cpu: 0%/50%   1     10    10    25m
+[03:06:05] web   Deployment/web   cpu: 0%/50%   1     10    10    25m
+[03:06:26] web   Deployment/web   cpu: 0%/50%   1     10    10    26m
+[03:06:46] web   Deployment/web   cpu: 0%/50%   1     10    10    26m
+[03:07:07] web   Deployment/web   cpu: 0%/50%   1     10    10    26m
+[03:07:28] web   Deployment/web   cpu: 0%/50%   1     10    10    27m
+[03:07:48] web   Deployment/web   cpu: 0%/50%   1     10    10    27m
+[03:08:09] web   Deployment/web   cpu: 0%/50%   1     10    1     27m
+[03:08:30] web   Deployment/web   cpu: 0%/50%   1     10    1     28m
+[03:08:50] web   Deployment/web   cpu: 0%/50%   1     10    1     28m
+[03:09:11] web   Deployment/web   cpu: 0%/50%   1     10    1     28m
+[03:09:31] web   Deployment/web   cpu: 0%/50%   1     10    1     29m
+[03:09:52] web   Deployment/web   cpu: 0%/50%   1     10    1     29m
+Events:
+  Type     Reason                        Age    From                       Message
+  ----     ------                        ----   ----                       -------
+  Warning  FailedGetResourceMetric       29m    horizontal-pod-autoscaler  failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedComputeMetricsReplicas  29m    horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedGetResourceMetric       29m    horizontal-pod-autoscaler  failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+  Warning  FailedComputeMetricsReplicas  29m    horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)
+  Normal   SuccessfulRescale             24m    horizontal-pod-autoscaler  New size: 2; reason: cpu resource utilization (percentage of request) above target
+  Normal   SuccessfulRescale             24m    horizontal-pod-autoscaler  New size: 4; reason: cpu resource utilization (percentage of request) above target
+  Normal   SuccessfulRescale             23m    horizontal-pod-autoscaler  New size: 8; reason: cpu resource utilization (percentage of request) above target
+  Normal   SuccessfulRescale             23m    horizontal-pod-autoscaler  New size: 10; reason: cpu resource utilization (percentage of request) above target
+  Normal   SuccessfulRescale             2m37s  horizontal-pod-autoscaler  New size: 2; reason: All metrics below target
+  Normal   SuccessfulRescale             2m22s  horizontal-pod-autoscaler  New size: 1; reason: All metrics below target
+
+
+--- E9) LIMPEZA (verificacao final) ---
+clusters (deve ficar vazio):
+stacks av1 (deve ficar vazio):
+roles av1 (deve ficar vazio):
+
+Lembrete: confira o Billing no Console (Tela 13) e some o custo do dia manualmente.
+====================================================================
